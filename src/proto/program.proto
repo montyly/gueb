@@ -1,0 +1,47 @@
+syntax = "proto2";
+
+package com.proto;
+option java_package = "com.proto";
+option java_outer_classname = "Program";
+
+message heap_functions
+{
+	repeated uint64 call_to_malloc = 1;
+	repeated uint64 call_to_free   = 2;
+}
+
+message node
+{
+	required uint64 addr      = 1;
+	required string node_desc = 2; 
+}
+
+message block
+{
+	required uint64 addr       = 1;
+	repeated uint64 nodes_addr = 2;
+}
+
+message block_relation
+{
+	required uint64 father  = 1;
+	required uint64 son     = 2;
+}
+
+message function
+{
+	required string name                    = 1;
+	repeated node nodes 	                = 2;
+	repeated block blocks                   = 3;
+	repeated block_relation block_relations = 4;
+	repeated uint64 calls                   = 5;
+	repeated uint64 retns                   = 6;
+	required uint64 eip                     = 7;
+	required uint64 number_unlooping        = 8;
+}
+
+message program
+{
+	repeated function functions  = 1;
+	required heap_functions heap_func = 2;
+}

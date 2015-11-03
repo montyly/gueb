@@ -113,6 +113,71 @@ struct
         let _ = Printf.fprintf oc "}\n" in
         close_out oc
 
+    let print_values filename values calls =
+        let oc = open_out filename in
+        let _ = Printf.fprintf oc "strict digraph g {\n" in
+        let pp_val_bb bb = Printf.sprintf "0x%x" bb.addr_bb in
+        let pp_val_node n = Printf.sprintf "0x%x" n.addr in
+        let print_values_dot_stream_node oc n =
+            let prev_addr = ref 0 in
+            let access_heap= List.fold_left (fun x y -> Printf.sprintf "%s %s" x (Absenv_v.pp_chunk y)) ""  (Ir_v.access_heap n.stmt n.vsa) in
+            let () = if(!prev_addr>0)
+                then
+                Printf.fprintf oc "%d -> %d\n%d[label=\"%s AccessHeap %s HF %s\"]\n" (!prev_addr) n.addr n.addr (pp_val_node n) access_heap "empty"
+            else
+                Printf.fprintf oc "%d[label=\"%s AccessHeap %s HF %s\"]\n" n.addr (pp_val_node n)  access_heap "empty"
+            in prev_addr := n.addr 
+        in 
+        let print_values_dot_stream_bb oc bb counter =
+            let access_heap = List.map (fun x -> Ir_v.access_heap x.stmt x.vsa) bb.nodes in
+            let access_heap = List.concat access_heap in
+            let access_heap = List.map (fun x -> Absenv_v.pp_chunk x) access_heap in
+            let access_heap = List.sort_uniq String.compare access_heap in
+            let access_heap = 
+                if(List.length access_heap > 0)
+                then
+                     Printf.sprintf "\\nAccessHeap %s" (List.fold_left (fun x y -> Printf.sprintf "%s %s" x y) "" access_heap) 
+                else Printf.sprintf "" 
+            in
+            let () = Printf.fprintf oc "%03d%d[label=\"%x%s\"]\n" (counter) bb.addr_bb bb.addr_bb access_heap in
+       (*     let () = List.iter (fun x -> print_values_dot_stream_node oc x) bb.nodes in*)
+            List.iter (fun x -> Printf.fprintf oc "%03d%d -> %03d%d\n" (counter) bb.addr_bb (counter)  x.addr_bb) bb.sons
+                
+               (* if(!number_values_dot>0)
+                    then
+                    Printf.fprintf oc "%d -> %d\n%d[label=\"%s\"]\n" (!number_values_dot) ((!number_values_dot)+1)  ((!number_values_dot)+1) (pp_val n)
+                else
+                    Printf.fprintf oc "%d[label=\"%s\"]\n"  ((!number_values_dot)+1)  (pp_val n)
+            in number_values_dot := (!number_values_dot) +1*)
+        in
+        let tbl = Hashtbl.create 200 in
+        let () = List.iter 
+            (fun (y,key) -> 
+                    try
+                        let elems=Hashtbl.find tbl key in
+                        Hashtbl.replace tbl key (y::elems)
+                    with
+                    Not_found -> Hashtbl.add tbl key [y]
+            ) values in
+        let () = Hashtbl.iter
+            (fun key l ->
+                let () = Printf.fprintf oc "subgraph cluster_%d { \n" (key)  in
+                let () = List.iter (fun x -> print_values_dot_stream_bb oc x key) l in
+                Printf.fprintf oc "}\n" 
+            ) tbl in
+(*        let compare_bt bt1 bt2 = 
+            if (List.length bt1 != List.length bt2 ) then false
+            else
+                List.for_all (fun ((add1,it1),s1) ((add2,it2),s2) -> add1=addr2 and it1=it2) bt1 bt2*)
+(*        let () = counter:=0 in*)
+(*        let () = List.iter (fun x -> print_values_dot_stream_bb oc x) values in *)
+        let () = List.iter (
+            fun (ori,dst,ori_n,dst_n) -> 
+                Printf.fprintf oc "%03d%d -> %03d%d\n" ori_n ori.addr_bb dst_n dst.addr_bb
+                ) calls in
+        let _ = Printf.fprintf oc "}\n" in
+        close_out oc
+
     let print_sg dir_output =
         if (Hashtbl.length sg_uaf) == 0 then ()
         else
@@ -887,8 +952,19 @@ struct
                 let vsa = Absenv_v.set_value_string vsa "esp" prev_esp in
                 Absenv_v.set_value_string vsa "ebp" prev_ebp
 
+    let visit_before bb = ()
     
-    let rec value_analysis func list_funcs list_malloc list_free backtrack dir_output verbose show_values show_call show_free  =
+    let visit_after bb = ()
+    
+    let saved_values = ref [] 
+
+    let number_call = ref 0
+
+    let current_call = ref 0
+    
+    let saved_call = ref [] 
+    
+    let rec value_analysis func list_funcs list_malloc list_free backtrack dir_output verbose show_values show_call show_free details_values  =
         let score_childs=ref false in
         let rec merge_father fathers m=
             match fathers with
@@ -977,17 +1053,26 @@ struct
                                 let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).init<-n.vsa in
                                 let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).ha<-n.ha in
                                 let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).hf<-n.hf in
+                                let number_call_prev = (!current_call) in
                                 try
-                                    let () = if(show_call) then Printf.printf "Call 0x%x:%d %s | %s\n" n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
+                                    let () = if(show_call) then Printf.printf "Call %d %d 0x%x:%d %s | %s\n" (!current_call) (!number_call) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = flush Pervasives.stdout in
-                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs list_malloc list_free (((n.addr,n.unloop),func_name)::backtrack) dir_output verbose show_values show_call show_free in
-                                    let () = if(verbose) then Printf.printf "End call %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                    let _ =  check_uaf func_bbs (((n.addr,n.unloop),func_name)::backtrack) n.addr in 
+                                    let () = 
+                                        if(details_values) 
+                                            then 
+                                            let () = number_call:=(!number_call+1) in
+                                            let () = saved_call := (bb_ori,func_eip,(!current_call),(!number_call))::(!saved_call) in 
+                                            current_call := (!number_call)
+                                    in
+                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs list_malloc list_free (((n.addr,n.unloop),func_name)::backtrack) dir_output verbose show_values show_call show_free details_values in
+                                    let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
+                                    let () = if(details_values) then current_call:=number_call_prev in
+                                    let _ = check_uaf func_bbs (((n.addr,n.unloop),func_name)::backtrack) n.addr in 
                                     let _ = score_childs:=(||) (!score_childs) score in
                                     try
                                         let _ = n.vsa<-Absenv_v.filter_esp_ebp vsa verbose in
                                         let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
-                                        n.hf<-hf;
+                                        n.hf<-hf
                                     with
                                         | AbsEnv.ERROR -> 
                                             let _ = if (verbose) then 
@@ -999,10 +1084,11 @@ struct
                                             let _ = n.vsa <- restore_stack_frame n.vsa vsa in
                                             let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
                                             let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
-                                            n.hf<-hf;
+                                            n.hf<-hf
                                         |_ -> Printf.printf "WTF \n";
                                 with
                                     | NOT_RET (vsa,ha,hf,score)  ->
+                                        let () = if(details_values) then current_call:=number_call_prev in
                                         let _ = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let _ = check_uaf func_bbs (((n.addr,n.unloop),func_name)::backtrack) n.addr in
                                         let _ = score_childs:=(||) (!score_childs) score in
@@ -1017,6 +1103,7 @@ struct
                                         let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                         n.hf<-hf;                                               
                                    | NOT_RET_NOT_LEAF ->
+                                        let () = if(details_values) then current_call:=number_call_prev in
                                         let () = if (verbose) then Printf.printf "End call (NOT RET NOT LEAF) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let _ = n.vsa <- restore_stack_frame n.vsa vsa in
                                         let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
@@ -1034,6 +1121,7 @@ struct
             let rec value_analysis_rec bb=
                 if( (not bb.is_done) && (List.for_all (fun x -> x.is_done) bb.fathers)) 
                     then
+                    let () = visit_before bb in
                     let fathers_filter = List.filter (fun x -> (List.length x.nodes)>0) bb.fathers in
                     let fathers=ref ((List.map (fun x -> List.nth x.nodes ((List.length x.nodes)-1)) fathers_filter )) in
                     let () = List.iter (
@@ -1042,6 +1130,12 @@ struct
                             fathers:=[x];
                         ) bb.nodes in
                     let _ = bb.is_done<-true in
+                    let () = 
+                        if(details_values)
+                            then
+                            saved_values:=(bb,(!current_call))::(!saved_values)
+                    in
+                    let () = visit_after bb in
                     List.iter value_analysis_rec bb.sons
         in
         let _ = value_analysis_rec func_eip in
@@ -1121,12 +1215,15 @@ struct
                 let () = Printf.printf "Number of func %s %d\n" func_name (!count) in
                 (!count) 
 
-    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free =
+    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free details_values =
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs list_malloc list_free in
             let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name)] func_name) bbs  in
-            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name]) dir_output verbose show_values show_call show_free in
+            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name]) dir_output verbose show_values show_call show_free details_values in
             let _ = check_uaf bbs [(eip.addr_bb,0),name] (0) in
+            let () = if(details_values)
+                then print_values "/tmp/test.dot" (!saved_values) (!saved_call)
+            in
             print_sg dir_output
         with
             | Not_found -> Printf.printf "Func %s : error (not found)\n" func_name

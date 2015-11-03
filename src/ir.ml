@@ -19,6 +19,7 @@ sig
 
     val get_value_jump : ir_stmt -> int option
     val function_transfer : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list -> int ref -> (int*int) -> string -> ((int*int)*string) list -> Absenv_v.absenv list
+    val access_heap : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list
     val check_uaf : (ir_stmt*Absenv_v.absenv list*Absenv_v.he list*(int*int)) -> (ir_stmt*Absenv_v.he list *(int*int)) option 
     val score_heap_use : (ir_stmt*Absenv_v.absenv list) -> bool  (*TODO use with hashmap *)
     
@@ -562,6 +563,35 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
 
         | _ -> None;;
 
+
+    (*
+     * Return heaps elements accessed
+     *) 
+    let access_heap  stmt abs =
+        match stmt.type_node with
+        (*
+         * stm a1,,a3
+         * for each value3 a3
+         *  [value3]=a1
+         * return  value3 inter HE
+         * *)
+        | Stm ->
+                let arg2=arg_to_string (stmt.arg2) in
+                let vals=Absenv_v.get_value_string abs arg2 in
+                let names=Absenv_v.values_to_names vals in
+                Absenv_v.names_to_he names   
+        (*
+         * ldm a1,,a3
+         * for each value1 a1
+         *  a3=[value1]
+         *  return value1 inter HE
+         * *)
+        | Ldm ->
+                let arg0=arg_to_string (stmt.arg0) in
+                let vals=Absenv_v.get_value_string abs arg0 in
+                let names=Absenv_v.values_to_names vals in
+                Absenv_v.names_to_he names 
+        | _ -> [] ;;
 
     (* 
      * Protobuf parsing

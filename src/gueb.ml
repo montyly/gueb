@@ -10,12 +10,13 @@ let verbose = ref false
 let show_call = ref false
 let show_free = ref false
 let show_values = ref false
+let details_values = ref false
 let program = ref "reil"
 let func = ref "main"
 let funcs_file = ref ""
 let stub_name = ref ""
 let type_analysis = ref 0
-let dir_output = ref "/tmp"
+let dir_output = ref "results"
 
 
 (* Signature *)
@@ -41,7 +42,7 @@ struct
         let malloc = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
         let free = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free) in
+        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free) (!details_values) in
         Printf.printf "--------------------------------\n"
 
     end ;;
@@ -93,6 +94,7 @@ let () =
         ("-show-call", Arg.Set show_call, "Show calls");
         ("-show-free", Arg.Set show_free, "Show freed variables");
         ("-show-values", Arg.Set show_values, "Show values computed (hugeee print)");
+        ("-details-values", Arg.Set details_values, "Details values computed in RAM");
         ("-reil", Arg.String (fun x -> program:=x), "Name of the REIL file (protobuf), default : reil");
         ("-func", Arg.String (fun x ->  func:=x), "Name of the entry point function, default : main");
         ("-funcs_file", Arg.String (fun x ->  funcs_file:=x), "Name of the files containing all the functions name");

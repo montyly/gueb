@@ -43,6 +43,7 @@ sig
     val pp_valuesset : valuesSet -> string
     val pp_absenvs : absenv list -> string
     val pp_he : he list -> string
+    val pp_chunk : he -> string
     val pp_state :  ((int*int)*string) list -> string
  
     val check_df : he list -> valuesSet -> he list
@@ -52,6 +53,7 @@ sig
 
     val restore_stack_frame : absenv list -> absenv list -> absenv list
     
+    val names_to_he : nameVal list -> he list
     val check_uaf : nameVal list -> he list -> he list
     val check_use_heap : nameVal list -> bool
     val retn_not_analyse : unit -> valuesSet
@@ -720,6 +722,20 @@ struct
         let v1_ebp = set_value_string v1_esp "ebp" (get_value_string v2 "ebp") in
         v1_ebp;;
 
+    let names_to_he names =
+        let rec filter n l = 
+            match n with
+            | [] -> l
+            | BaseOffset b::tl ->
+                begin
+                    match b.base with
+                    | HE h -> filter tl (h::l)
+                    | _ -> filter tl l
+                end
+            | _ :: tl -> filter tl l
+        in
+        filter names []
+        
     let check_uaf names hf =
         let ret = List.map 
         (fun x -> 

@@ -18,7 +18,7 @@ sig
     val parse_func_protobuf_number_unloop :  Program_piqi.function_-> int                    (* bbs,connection_unfilter,eip, number_unloop,nodes,call_retn)  *)
 
     val get_value_jump : ir_stmt -> int option
-    val function_transfer : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list -> int ref -> (int*int) -> string -> ((int*int)*string) list -> Absenv_v.absenv list
+    val function_transfer : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list -> Absenv_v.absenv list
     val access_heap : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list
     val check_uaf : (ir_stmt*Absenv_v.absenv list*Absenv_v.he list*(int*int)) -> (ir_stmt*Absenv_v.he list *(int*int)) option 
     val score_heap_use : (ir_stmt*Absenv_v.absenv list) -> bool  (*TODO use with hashmap *)
@@ -403,8 +403,8 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
     (*
      * transfer function
      * *)
-    let function_transfer ir abs hf number_init addr func_name backtrack = 
-        let state = (addr,func_name)::backtrack in
+    let function_transfer ir abs hf number_init addr func_name call_number backtrack = 
+        let state = (addr,func_name,call_number)::backtrack in
         match ir.type_node with 
             (*
              * add a1,a2,a3

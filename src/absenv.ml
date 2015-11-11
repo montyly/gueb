@@ -9,10 +9,10 @@ sig
     val initAbsenCall : int -> absenv option
     val init_first : absenv list
     val reset : string -> absenv list
-    val init_malloc : int -> ((int*int)*string) list -> absenv list
-    val init_vs_chunk : int -> int -> ((int*int)*string) list -> valuesSet
-    val init_chunk : int -> int -> ((int*int)*string) list -> he
-    val new_init_memory : int ref-> ((int*int)*string) list ->  valuesSet    
+    val init_malloc : int -> ((int*int)*string*int) list -> absenv list
+    val init_vs_chunk : int -> int -> ((int*int)*string*int) list -> valuesSet
+    val init_chunk : int -> int -> ((int*int)*string*int) list -> he
+    val new_init_memory : int ref-> ((int*int)*string*int) list ->  valuesSet    
 
     val create_cst : int -> valuesSet
     val merge_he : he list -> he list -> he list
@@ -22,14 +22,14 @@ sig
     val update : absenv list-> absenv list-> absenv list(* init -> input ->   *)
 
     val get_value : absenv list -> nameVal -> valuesSet
-    val get_value_create: absenv list -> nameVal -> int ref -> ((int*int)*string) list -> absenv list * valuesSet
+    val get_value_create: absenv list -> nameVal -> int ref -> ((int*int)*string*int) list -> absenv list * valuesSet
     val set_value : absenv list -> nameVal-> valuesSet -> absenv list
    
     val get_chunk_key : he -> int*int
-    val get_chunk_states : he -> ((int*int)*string) list * (((int*int)*string) list) list
+    val get_chunk_states : he -> ((int*int)*string*int) list * (((int*int)*string*int) list) list
  
     val get_value_string : absenv list -> string -> valuesSet
-    val get_value_string_create : absenv list -> string -> int ref -> ((int*int)*string) list -> absenv list *valuesSet
+    val get_value_string_create : absenv list -> string -> int ref -> ((int*int)*string*int) list -> absenv list *valuesSet
     val set_value_string : absenv list -> string -> valuesSet -> absenv list
 
     val string_to_name : string -> nameVal
@@ -44,10 +44,10 @@ sig
     val pp_absenvs : absenv list -> string
     val pp_he : he list -> string
     val pp_chunk : he -> string
-    val pp_state :  ((int*int)*string) list -> string
+    val pp_state :  ((int*int)*string*int) list -> string
  
     val check_df : he list -> valuesSet -> he list
-    val free: he list-> he list-> valuesSet -> ((int*int)*string) list -> bool -> (he list)*(he list)
+    val free: he list-> he list-> valuesSet -> ((int*int)*string*int) list -> bool -> (he list)*(he list)
     val filter_values : valuesSet list-> valuesSet 
     val filter_esp_ebp : absenv list-> bool -> absenv list
 
@@ -87,8 +87,8 @@ struct
             base_chunk : int;
             size : int;
             type_chunk : int ; (* 0 : heap, 1 : init mem, hack when no init memory, we class it as chunk *)
-            mutable state_alloc : ((int*int)*string) list;
-            mutable state_free : (((int*int)*string) list) list;
+            mutable state_alloc : ((int*int)*string*int) list; (* addr it func_name number_func *)
+            mutable state_free : (((int*int)*string*int) list) list;
         };;
 
     type he = chunk;;
@@ -195,7 +195,7 @@ struct
         "Cst" ;;
 
     let pp_state st=
-        Printf.sprintf "%s" (List.fold_left (fun x ((addr,it),f) -> x^" "^(Printf.sprintf "0x%x:%d:%s" addr it f)) "" st);;
+        Printf.sprintf "%s" (List.fold_left (fun x ((addr,it),f,n) -> x^" "^(Printf.sprintf "0x%x:%d:%s" addr it f)) "" st);;
    
     let pp_states st =
         List.fold_left (fun x y -> (pp_state y) ^ " | " ^ x ) "" st;;

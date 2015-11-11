@@ -2,14 +2,14 @@ open Absenv;;
 
 module type Stubfunc = functor (Absenv_v : AbsEnvGenerique) ->
 sig
-   val stub : int -> Absenv_v.absenv list -> Absenv_v.he list -> Absenv_v.he list -> int ref -> (int*int) -> string -> ((int*int)*string) list ->  bool * Absenv_v.absenv list * Absenv_v.he list * Absenv_v.he list
+   val stub : int -> Absenv_v.absenv list -> Absenv_v.he list -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list ->  bool * Absenv_v.absenv list * Absenv_v.he list * Absenv_v.he list
 
 end ;;
 
 
 module StubNoFunc = functor (Absenv_v : AbsEnvGenerique) ->
 struct
-    let stub  addr vsa ha hf number_init addr func_name backtrack  = false,vsa,ha,hf
+    let stub  addr vsa ha hf number_init addr func_name call_number backtrack  = false,vsa,ha,hf
 end;;
  
 module StubOptiPNG = functor (Absenv_v : AbsEnvGenerique) ->
@@ -21,14 +21,14 @@ struct
 
     let restore_esp vsa = Absenv_v.restore_esp vsa;;    
 
-    let call_png_free vsa ha hf addr func_name backtrack =
+    let call_png_free vsa ha hf addr func_name call_number backtrack =
         try
             let val_esp=Absenv_v.get_value_string vsa "esp" in
             let val_esp_8= Absenv_v.add val_esp (Absenv_v.create_cst 8) in
             let names=Absenv_v.values_to_names val_esp_8 in
             let vals=List.map (fun x -> Absenv_v.get_value vsa x) names in
             let vals_filter=Absenv_v.filter_values  vals in
-            let (ha,hf)=Absenv_v.free ha hf vals_filter ((addr,func_name)::backtrack) false in
+            let (ha,hf)=Absenv_v.free ha hf vals_filter ((addr,func_name,call_number)::backtrack) false in
             let ha=Absenv_v.merge_alloc_free_conservatif ha hf in
             true,(restore_esp vsa),ha,hf
         with                        
@@ -36,14 +36,14 @@ struct
                 let _ = Printf.printf "Error on png_free? \n" in 
                 true,(restore_esp vsa),ha,hf
 
-    let call_png_destroy vsa ha hf addr func_name backtrack  =
+    let call_png_destroy vsa ha hf addr func_name call_number backtrack  =
         try
             let val_esp=Absenv_v.get_value_string vsa "esp" in
             let val_esp_4= Absenv_v.add val_esp (Absenv_v.create_cst 4) in
             let names=Absenv_v.values_to_names val_esp_4 in
             let vals=List.map (fun x -> Absenv_v.get_value vsa x) names in
             let vals_filter=Absenv_v.filter_values  vals in
-            let (ha,hf)=Absenv_v.free ha hf vals_filter ((addr,func_name)::backtrack) false in
+            let (ha,hf)=Absenv_v.free ha hf vals_filter ((addr,func_name,call_number)::backtrack) false in
             let ha=Absenv_v.merge_alloc_free_conservatif ha hf in
             true,(restore_esp vsa),ha,hf
         with                        
@@ -51,10 +51,10 @@ struct
                 let _ = Printf.printf "Error on png_destroy? \n" in 
                 true,(restore_esp vsa),ha,hf
 
-    let stub addr_call vsa ha hf number_init addr func_name backtrack  =
+    let stub addr_call vsa ha hf number_init addr func_name call_number backtrack  =
         match addr_call with
-        | _ when addr_call = png_free -> call_png_free vsa ha hf addr func_name backtrack 
-        | _ when addr_call = png_destroy -> call_png_destroy vsa ha hf addr func_name backtrack
+        | _ when addr_call = png_free -> call_png_free vsa ha hf addr func_name call_number backtrack 
+        | _ when addr_call = png_destroy -> call_png_destroy vsa ha hf addr func_name call_number backtrack
         | _ when List.exists (fun x -> x=addr_call) skip -> true,(restore_esp vsa),ha,hf
         | _ -> false,vsa,ha,hf
         
@@ -70,7 +70,7 @@ struct
     let restore_esp vsa = Absenv_v.restore_esp vsa;;    
 
 
-    let call_jas_matrix vsa ha hf number_chunk addr func_name backtrack =
+    let call_jas_matrix vsa ha hf number_chunk addr func_name call_number backtrack =
         try
             let new_chunk = (Absenv_v.init_vs_chunk ( !number_chunk) 0 backtrack) in
             let vsa = Absenv_v.set_value_string vsa "eax" new_chunk in
@@ -81,10 +81,10 @@ struct
             _ -> 
                 true,(restore_esp vsa),ha,hf
 
-    let stub addr_call vsa ha hf number_init addr func_name backtrack  =
+    let stub addr_call vsa ha hf number_init addr func_name call_number backtrack  =
         match addr_call with
-        | _ when addr_call = jas_matrix_create -> call_jas_matrix vsa ha hf number_init addr func_name backtrack 
-        | _ when addr_call = jas_iccattrtab_create -> call_jas_matrix vsa ha hf number_init addr func_name backtrack 
+        | _ when addr_call = jas_matrix_create -> call_jas_matrix vsa ha hf number_init addr func_name call_number backtrack 
+        | _ when addr_call = jas_iccattrtab_create -> call_jas_matrix vsa ha hf number_init addr func_name call_number backtrack 
         | _ when List.exists (fun x -> x=addr_call) skip -> true,(restore_esp vsa),ha,hf
         | _ -> false,vsa,ha,hf
         
@@ -101,7 +101,7 @@ struct
 
 
 
-    let call_gtk_tree_model_get vsa ha hf number_chunk addr func_name backtrack =
+    let call_gtk_tree_model_get vsa ha hf number_chunk addr func_name call_number backtrack =
         try
             let vsa = restore_esp vsa in
             (* We create a new chunk*)
@@ -126,9 +126,9 @@ struct
             _ -> 
                 true,restore_esp vsa ,ha,hf
 
-    let stub addr_call vsa ha hf number_init addr func_name backtrack  =
+    let stub addr_call vsa ha hf number_init addr func_name call_number backtrack  =
         match addr_call with
-        | _ when addr_call = gtk_tree_model_get -> call_gtk_tree_model_get vsa  ha hf number_init addr func_name backtrack 
+        | _ when addr_call = gtk_tree_model_get -> call_gtk_tree_model_get vsa  ha hf number_init addr func_name call_number backtrack 
         | _ -> false,vsa,ha,hf
         
 end;;

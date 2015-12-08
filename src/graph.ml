@@ -404,7 +404,6 @@ struct
                   let leafs =  find_leafs dst_n in
                   let ori_son = List.hd ori.sons in (* todo : call with many sons ? *)
                   let txt = List.fold_left (fun y x -> Printf.sprintf "%s%03d%d -> %03d%d\n" y dst_n x.addr_bb ori_n ori_son.addr_bb ) "" leafs in 
-(*                  let txt = Printf.sprintf "%s%03d%0d -> %03d%d[style=dashed]\n" txt ori_n ori.addr_bb ori_n ori_son.addr_bb in*)
                   let () = ori.sons <- [] in
                   Printf.sprintf "%s%s%03d%d -> %03d%d\n" x txt ori_n ori.addr_bb dst_n dst.addr_bb
                 else  
@@ -416,11 +415,8 @@ struct
                 ) txt calls in
         let txt = Hashtbl.fold
             (fun key l prev ->
-               (* let txt = Printf.sprintf "%ssubgraph cluster_%d { \n" prev (key)  in
-                let txt = List.fold_left (fun x y -> Printf.sprintf "%s%s" x (print_values_dot_stream_bb y key)) txt l in *)
                 let txt = List.fold_left (fun x y -> Printf.sprintf "%s%s" x (print_values_dot_stream_bb y key)) prev l in
                 txt
-              (*  Printf.sprintf "%s}\n" txt*)
             ) tbl txt in
         let oc = open_out (Printf.sprintf "%s/graph.dot" dir) in
         let () = Printf.fprintf oc "%s" txt in

@@ -17,6 +17,7 @@ let funcs_file = ref ""
 let stub_name = ref ""
 let type_analysis = ref 0
 let dir_output = ref "results"
+let print_graph = ref false
 
 
 (* Signature *)
@@ -59,7 +60,7 @@ struct
         let _ = close_in channel in 
         let raw_heap_func = raw_program.heap_func in
         let list_funcs = raw_program.functions in
-        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] (!verbose) (!show_call) in
+        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] (!dir_output) (!verbose) (!show_call) (!print_graph) in
         flush Pervasives.stdout
 
 end ;;
@@ -94,10 +95,11 @@ let () =
         ("-show-call", Arg.Set show_call, "Show calls");
         ("-show-free", Arg.Set show_free, "Show freed variables");
         ("-show-values", Arg.Set show_values, "Show values computed (hugeee print)");
+        ("-print-graph", Arg.Set print_graph, "Print the graph (type 1)");
         ("-details-values", Arg.Set details_values, "Details values computed in RAM");
         ("-reil", Arg.String (fun x -> program:=x), "Name of the REIL file (protobuf), default : reil");
         ("-func", Arg.String (fun x ->  func:=x), "Name of the entry point function, default : main");
-        ("-funcs_file", Arg.String (fun x ->  funcs_file:=x), "Name of the files containing all the functions name");
+        ("-funcs-file", Arg.String (fun x ->  funcs_file:=x), "Name of the files containing all the functions name");
         ("-stub", Arg.String (fun x -> stub_name:=x), "Name of the stub module");
         ("-type", Arg.Int (fun x -> type_analysis:=x), "\n\t0 : uaf detection (default)\n\t1 : compute callgraph size\n\t2 : uaf detection on a set of functions\n\t3 : compute callgraph size on a set of functions");
         ("-output_dir", Arg.String (fun x -> dir_output:=x), "Output directory, default /tmp");

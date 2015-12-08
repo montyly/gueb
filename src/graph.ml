@@ -200,11 +200,9 @@ struct
                                         in ()
                                 ) calls
                             in
-                            let () = Printf.printf "number son %d %x %d\n"  key bb.addr_bb (List.length bb.sons) in
                             let walk_sons = walk_desc (List.map (fun x -> x,key ) bb.sons) ori_to_dst in
                             if ( List.exists( fun (x,n) -> x.addr_bb = bb.addr_bb  && n = key && x.unloop = bb.unloop ) (!l)) then walk_sons @ (walk_desc hd ori_to_dst)
                             else
-                                let () = Printf.printf "ici\n" in
                                 let () = l := ((bb,key)::(!l)) in
                                 walk_sons @ (walk_desc hd ori_to_dst)
         in 

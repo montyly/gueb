@@ -95,7 +95,7 @@ let () =
         ("-show-call", Arg.Set show_call, "Show calls");
         ("-show-free", Arg.Set show_free, "Show freed variables");
         ("-show-values", Arg.Set show_values, "Show values computed (hugeee print)");
-        ("-print-graph", Arg.Set print_graph, "Print the graph (type 1)");
+        ("-print-graph", Arg.Set print_graph, "Print the graph (for type 2, experimental)");
         ("-details-values", Arg.Set details_values, "Details values computed in RAM");
         ("-reil", Arg.String (fun x -> program:=x), "Name of the REIL file (protobuf), default : reil");
         ("-func", Arg.String (fun x ->  func:=x), "Name of the entry point function, default : main");

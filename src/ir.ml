@@ -17,7 +17,7 @@ sig
     val parse_func_protobuf :  Program_piqi.function_-> (int*(int list)) list * (int * int) list * int * int  * (ir_stmt*int*int) list * (int list * int list)
     val parse_func_protobuf_number_unloop :  Program_piqi.function_-> int                    (* bbs,connection_unfilter,eip, number_unloop,nodes,call_retn)  *)
 
-    val get_value_jump : ir_stmt -> int option
+    val get_value_jump : ir_stmt -> Absenv_v.absenv list -> int option
     val function_transfer : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list -> Absenv_v.absenv list
     val access_heap : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list
     val check_uaf : (ir_stmt*Absenv_v.absenv list*Absenv_v.he list*(int*int)) -> (ir_stmt*Absenv_v.he list *(int*int)) option 
@@ -147,7 +147,9 @@ type register_reil=
  |OF
  |SF
  |DF
- |ZF;;
+ |ZF
+ |DSBASE
+ |SSBASE;;
 
 type arg_reil=
     | Empty 
@@ -221,6 +223,8 @@ let create_arg size_arg type_arg value_reil=
     | _,_,"SF"->Register (SF)
     | _,_,"DF"->Register (DF)
     | _,_,"ZF"->Register (ZF)
+    | _,_,"dsbase"-> Register (DSBASE)
+    | _,_,"ssbase"-> Register (SSBASE)
     | _,_,"" -> Empty
     | _,_,_ -> Sub_address;;
 
@@ -335,7 +339,9 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
             | OF -> "OF"
             | SF -> "SF"
             | DF -> "DF"
-            | ZF -> "ZF";;
+            | ZF -> "ZF"
+            | DSBASE -> "dsbase"
+            | SSBASE -> "ssbase";;
 
 
     let print_args s =
@@ -383,13 +389,19 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
 
     let parse_number_unloop eip = List.hd (read_file  eip "%d" (fun x->x) );;
 
-    let get_value_jump ir =
+    let get_value_jump ir vsa =
         match ir.type_node with
         | Jcc -> (
             match ir.arg2 with
                 | Integer a -> 
                     Some a
-                | _ -> None
+                | Register T1 -> 
+                    let v = Absenv_v.get_value_string vsa "t1" in
+                    let is = Absenv_v.get_integer_values v  in
+                    if (List.length is) == 0 then None
+                    else
+                        List.hd is 
+                | _ -> None                 
             )
         | _ -> None;;
 
@@ -442,6 +454,18 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 let arg1=arg_to_string (ir.arg1) in
                 let arg2=arg_to_string (ir.arg2) in
                 if(arg0=arg1) then Absenv_v.set_value_string abs arg2 (Absenv_v.get_value_string abs arg0) (* and with himself*)
+                else Absenv_v.set_value_string abs arg2 (Absenv_v.and_op (Absenv_v.get_value_string abs arg0) (Absenv_v.get_value_string abs arg1))
+            (*
+             * or a1,a2,a3
+             * for each value a1
+             *  for each value a2
+             *      a3=a1 or a2
+             * *)            
+            | And -> 
+                let arg0=arg_to_string (ir.arg0) in
+                let arg1=arg_to_string (ir.arg1) in
+                let arg2=arg_to_string (ir.arg2) in
+                if(arg0=arg1) then Absenv_v.set_value_string abs arg2 (Absenv_v.get_value_string abs arg0) (* or with himself*)
                 else Absenv_v.set_value_string abs arg2 (Absenv_v.and_op (Absenv_v.get_value_string abs arg0) (Absenv_v.get_value_string abs arg1))
             (*
              * str a1,,a3
@@ -513,14 +537,59 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 else abs
             (*
              * xor a1 b1,
-             * if a1=b1 -> 0 else TOP
+             * for each value a1
+             *  for each value a2
+             *      a3=a1 xor a2
              * *)
             | Xor ->                 
                 let arg0=arg_to_string (ir.arg0) in
                 let arg1=arg_to_string (ir.arg1) in
                 let arg2=arg_to_string (ir.arg2) in
                 if (arg0 = arg1) then  Absenv_v.set_value_string abs arg2 (Absenv_v.create_cst 0)
-                 else Absenv_v.set_value_string abs arg2 (Absenv_v.top_value () )
+                 else
+                    let val0 = Absenv_v.get_value_string abs arg0 in 
+                    let val1 =Absenv_v.get_value_string abs arg1 in 
+                    let val_xor = Absenv_v.xor_op val0 val1 in 
+                    Absenv_v.set_value_string abs arg2 val_xor
+            (*
+             * bisz a1 , , b1
+             * if a1==0 then b1 = 1
+             *
+             * *)
+            | Bisz  ->
+                let arg0=arg_to_string (ir.arg0) in
+                let arg2=arg_to_string (ir.arg2) in
+                let val0 = Absenv_v.get_value_string abs arg0 in 
+                let is_zero = Absenv_v.is_zero val0 in 
+                Absenv_v.set_value_string abs arg2 is_zero
+            (*
+             * mod a1,a2,a3
+             * for each value a1
+             *  for each value a2
+             *      a3=a1%a2
+             * *)             
+             | Mod -> 
+                let arg0=arg_to_string (ir.arg0) in
+                let arg1=arg_to_string (ir.arg1) in
+                let arg2=arg_to_string (ir.arg2) in
+                let val1 = Absenv_v.get_value_string abs arg0 in 
+                let val2 =Absenv_v.get_value_string abs arg1 in 
+                let val_mod = Absenv_v.modulo val1 val2 in 
+                Absenv_v.set_value_string abs arg2 val_mod
+            (*
+             * bsh a1,a2,a3
+             * for each value a1
+             *  for each value a2
+             *      a3=a1 << a2 (if a2 <0, a1 >> a2)
+             * *)             
+             | Bsh -> 
+                let arg0=arg_to_string (ir.arg0) in
+                let arg1=arg_to_string (ir.arg1) in
+                let arg2=arg_to_string (ir.arg2) in
+                let val1 = Absenv_v.get_value_string abs arg0 in 
+                let val2 =Absenv_v.get_value_string abs arg1 in 
+                let val_bsh = Absenv_v.bsh val1 val2 in 
+                Absenv_v.set_value_string abs arg2 val_bsh
             | _ -> abs;;
 
     (* 

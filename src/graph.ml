@@ -28,6 +28,7 @@ struct
     exception NOT_RET of (Absenv_v.absenv list)*(Absenv_v.he list)*(Absenv_v.he list)*bool;;
     exception NOT_RET_NOT_LEAF;;
     exception Timeout_unloop;;
+    exception MAX_EXPLORE;;
 
     module Ir_v = Ir_a (Absenv_v)
     module Stubfunc_v = Stubfunc_a (Absenv_v)
@@ -431,7 +432,51 @@ struct
         ) sg_uaf
 *)
 
-    let print_sg dir_output =
+    let print_sg dir_output  =
+        if (Hashtbl.length sg_uaf) == 0 then ()
+        else
+        let () =
+        try 
+            Unix.mkdir dir_output 0o777 
+        with
+            _ -> ()
+        in
+        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( (site list *  ((site list) list) * ((site list) list)) ) list ) Hashtbl.t ))  in
+        (* first ordone result by alloc, not by free *)
+        let _ =
+            Hashtbl.iter 
+                (fun ((chunk_id,chunk_type),free) (alloc,use) ->
+                    let key = chunk_id,chunk_type in
+                    try
+                        let elems=Hashtbl.find sg_uaf_by_alloc key in
+                        Hashtbl.replace sg_uaf_by_alloc key ((alloc,free,use)::elems)
+                    with
+                    Not_found -> Hashtbl.add sg_uaf_by_alloc key [alloc,free,use]
+                ) sg_uaf in
+        let _ = Printf.printf "Results, uaf found : \n\n" in
+        Hashtbl.iter 
+            (fun (chunk_id,chunk_type) elems -> 
+                let str =       
+                begin 
+                    match chunk_type with
+                    | 0 -> "chunk"
+                    | 1 -> "init_val"
+                    | _ -> "unknow"
+                end
+                in
+                let n = ref 0 in
+                let _ = List.iter (fun (alloc,free,use) -> print_uaf_dot (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  alloc free use ) elems in
+                let _ = Printf.printf "%s%d is an uaf :\n" str chunk_id in
+                let _ = List.iter (fun (alloc,free,use) ->
+                    let alloc_str=Absenv_v.pp_state alloc in
+                    let free_str=List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" free in  
+                    let use_str= List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" use in    
+                    Printf.printf "Allocated in \n\t%s\nfreed in \n\t%s\nused in \n\t%s\n--------------------------------------\n"        
+                    alloc_str free_str use_str ) elems in
+                Printf.printf "#################################\n" 
+            ) sg_uaf_by_alloc ;;
+
+    let print_sg_exp dir_output  =
         if (Hashtbl.length sg_uaf) == 0 then ()
         else
         let () =
@@ -496,7 +541,7 @@ struct
                     with
                     Not_found -> Hashtbl.add sg_uaf_by_alloc key [alloc,free,use]
                 ) sg in
-        Hashtbl.iter 
+            Hashtbl.iter 
             (fun (chunk_id,chunk_type) elems -> () 
 
         ) sg_uaf_by_alloc ;;
@@ -541,15 +586,19 @@ struct
         let _ =update_type nodes call type_NODE_CALL in
         update_type nodes retn type_NODE_RETN;;
 
+(*
     let update_malloc_free_protobuf list_nodes malloc_addr free_addr =
+        let _ = List.iter (fun x -> Printf.printf "Alloc %x\n" x ) malloc_addr in
         List.iter 
             (fun y -> 
-                match Ir_v.get_value_jump y.stmt with
+                match Ir_v.get_value_jump y.stmt y.vsa with
                 | None -> ()
                 | Some a ->
-                    if (List.exists (fun x-> x=a) malloc_addr) then (y.type_node <- (lor) y.type_node type_NODE_MALLOC);
+                    let _ = Printf.printf "Call %x\n" a in
+                    if (List.exists (fun x-> x=a) malloc_addr) then let _ = Printf.printf "######### Alloc\n" in (y.type_node <- (lor) y.type_node type_NODE_MALLOC);
                     if (List.exists (fun x-> x=a) free_addr) then (y.type_node <- (lor) y.type_node type_NODE_FREE);
             ) list_nodes;;           
+*)
 
     let find_eip nodes eip = 
         try
@@ -967,7 +1016,7 @@ struct
     
     let find_nodes_from_addr list_addr list_nodes val_unloop=List.map (fun x -> new_node x val_unloop ) (List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes );;
     
-    let parse_protobuf_number func call_to_malloc call_to_free number_unloop  =
+    let parse_protobuf_number func number_unloop  =
         let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
         let connexion=List.filter (fun (x,y) -> x!=y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
         let bb_nodes = List.map (fun x -> let (addr,list_nodes)=x in (create_bb addr,list_nodes)) bbs in
@@ -989,27 +1038,27 @@ struct
         let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in
         let () = begin_eip eip in
         let () = update_call_retn nodes call_retn in
-        let () = update_malloc_free_protobuf nodes call_to_malloc call_to_free in
+(*        let () = update_malloc_free_protobuf nodes  in*)
         (eip,bbs,func.name);;
     
-    let rec remove_loop_time timeout func call_to_malloc call_to_free number_unloop (*old_h*) =
-        if (number_unloop==0) then parse_protobuf_number func call_to_malloc call_to_free 0
+    let rec remove_loop_time timeout func  number_unloop (*old_h*) =
+        if (number_unloop==0) then parse_protobuf_number func  0
         else
           try
             let _ = Unix.alarm timeout in
-            parse_protobuf_number func call_to_malloc call_to_free number_unloop;
+            parse_protobuf_number func  number_unloop;
           with Timeout_unloop -> 
             let () = func.number_unlooping <- Int64.of_int (number_unloop-1) in 
             let () = Printf.printf "Timeout ! %s \n" func.name in 
             let () = flush Pervasives.stdout in 
-            remove_loop_time timeout func call_to_malloc call_to_free (max 0 (number_unloop-1)) 
+            remove_loop_time timeout func  (max 0 (number_unloop-1)) 
     
-    let parse_protobuf func call_to_malloc call_to_free = 
+    let parse_protobuf func  = 
             let number_unloop=Ir_v.parse_func_protobuf_number_unloop func in
-            if (number_unloop==0) then  parse_protobuf_number func call_to_malloc call_to_free 0
+            if (number_unloop==0) then  parse_protobuf_number func  0
             else
                 let old_handler = Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout_unloop)) in
-                let ret = remove_loop_time 10 func call_to_malloc call_to_free number_unloop (*old_handler*) in
+                let ret = remove_loop_time 10 func  number_unloop (*old_handler*) in
                 let _ = Unix.alarm 0 in
                 let _ = Sys.signal Sys.sigalrm old_handler in
                 ret
@@ -1058,12 +1107,13 @@ struct
                 match hd.type_node with
                 | _ when ((land) hd.type_node type_NODE_ENTRY)>0 
                     -> hd.init<-Absenv_v.init_first 
-                | _ when ((land) hd.type_node type_NODE_MALLOC)>0 
+             (*   | _ when ((land) hd.type_node type_NODE_MALLOC)>0 
                     -> 
                     let new_state = ((hd.addr,hd.unloop),func_name,(!current_call))::state in
                     let () = hd.init<-(Absenv_v.init_malloc ( !number_chunk) new_state ) in
                     let () = hd.ha<-[Absenv_v.init_chunk !number_chunk 0 new_state]  in
                     number_chunk:=!number_chunk+1;
+                *)
                 | _ -> ()
             );
             init_value_rec tl 
@@ -1216,13 +1266,13 @@ struct
           ) uaf_result) 
         then Printf.printf "Uaf find in %x Backtrack %s \n ###################################################################\n" addr (String.concat " " (List.map print_backtrack backtrack )) ;;
     
-    let find_func_name func_name list_func list_malloc list_free =
+    let find_func_name func_name list_func  =
         let func =(List.find (fun (x:Program_piqi.function_) -> x.name = func_name) list_func) in 
-        parse_protobuf func list_malloc list_free
+        parse_protobuf func 
     
-    let find_func_eip func_eip list_func list_malloc list_free=
-        let func = List.find (fun (x:Program_piqi.function_) -> ( ((Int64.to_int x.eip)/0x100) = func_eip)) list_func in
-        parse_protobuf func list_malloc list_free
+    let find_func_eip func_eip list_func =
+        let func = List.find (fun (x:Program_piqi.function_) -> ( ((Int64.to_int x.addr_to_call)/0x100) = func_eip)) list_func in   
+        parse_protobuf func 
     
     (* If you ignore a call, put TOP in eax *) 
     let ignore_call vsa n state = Absenv_v.set_value_string vsa "eax" (Absenv_v.top_value()) 
@@ -1238,7 +1288,7 @@ struct
     
     let visit_after bb = ()
     
-    let rec value_analysis func list_funcs list_malloc list_free backtrack dir_output verbose show_values show_call show_free details_values  =
+    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free details_values  =
         let score_childs=ref false in
         let rec merge_father fathers m=
             match fathers with
@@ -1266,46 +1316,61 @@ struct
                     let _ = Printf.printf "Func transfer node %s\n %s" func_name (pp_nodes_value [n]) in
                     flush Pervasives.stdout 
             in
-            if ((land) n.type_node type_NODE_FREE)>0 then
-                let () = if(verbose) then Printf.printf "Call Free %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                try 
-                    let _ =  n.vsa <- Absenv_v.restore_esp n.vsa in
-                    let val_esp=Absenv_v.get_value_string n.vsa "esp" in
-                    let names=Absenv_v.values_to_names val_esp in
-                    let vals=List.map (fun x -> Absenv_v.get_value n.vsa x) names in
-                    let vals_filter=Absenv_v.filter_values  vals in
-                    try 
-                        let df = Absenv_v.check_df n.hf vals_filter in
-                        match df with
-                        | [] ->     
-                            let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,n.unloop),func_name,!current_call)::backtrack) show_free  in
-                            let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
-                            n.hf<-hf
-                        | _ -> 
-                            List.iter (
-                                fun c -> 
-                                  add_uaf c [(((n.addr,n.unloop),"DF "^func_name,(!current_call))::backtrack)]
-                            ) df                 
-                    with
-                        Not_found -> 
-                            let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,n.unloop),func_name,!current_call)::backtrack) show_free in
-                            let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
-                            n.hf<-hf
-                with 
-                    AbsEnv.ERROR ->
-                        begin   
-                             if (verbose) then Printf.printf "Error on free? \n" 
-                        end
+(*            if ((land) n.type_node type_NODE_FREE)>0 the)
             else if (((land) n.type_node type_NODE_CALL)>0 && ((land) n.type_node type_NODE_MALLOC)>0)  
                 then
                 n.vsa <- Absenv_v.restore_esp n.vsa 
-            else if ((land) n.type_node type_NODE_CALL)>0 then
-                let addr_call=Ir_v.get_value_jump n.stmt in
+            else*) 
+            if ((land) n.type_node type_NODE_CALL)>0 then
+            begin
+                let addr_call=Ir_v.get_value_jump n.stmt n.vsa in
                 match addr_call with
                 | None -> (* if unknow jump *) 
                     let vsa = Absenv_v.restore_esp n.vsa in
                     n.vsa <- ignore_call vsa number_chunk (((n.addr,n.unloop),func_name,!current_call)::backtrack)
-                | Some a -> 
+                | Some a ->
+                    (* If call to malloc , should may be merge this into the stub module *) 
+                    if (List.exists (fun x-> x=a) malloc_addr) then
+                        let new_state = ((n.addr,n.unloop),func_name,(!current_call))::backtrack in
+                        let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
+                        let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
+                        let () = number_chunk:=!number_chunk+1 in
+                        n.vsa <- Absenv_v.restore_esp n.vsa 
+                    (* If call to free *)
+                    else if (List.exists (fun x-> x=a) free_addr) then
+                    begin
+                        let () = if(verbose) then Printf.printf "Call Free %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack )) in
+                        try 
+                            let _ =  n.vsa <- Absenv_v.restore_esp n.vsa in
+                            let val_esp=Absenv_v.get_value_string n.vsa "esp" in
+                            let names=Absenv_v.values_to_names val_esp in
+                            let vals=List.map (fun x -> Absenv_v.get_value n.vsa x) names in
+                            let vals_filter=Absenv_v.filter_values  vals in
+                            try 
+                                let df = Absenv_v.check_df n.hf vals_filter in
+                                match df with
+                                | [] ->     
+                                    let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,n.unloop),func_name,!current_call)::backtrack) show_free  in
+                                    let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                    n.hf<-hf
+                                | _ -> 
+                                    List.iter (
+                                        fun c -> 
+                                          add_uaf c [(((n.addr,n.unloop),"DF "^func_name,(!current_call))::backtrack)]
+                                    ) df                 
+                            with
+                                Not_found -> 
+                                    let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,n.unloop),func_name,!current_call)::backtrack) show_free in
+                                    let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                    n.hf<-hf
+                        with 
+                            AbsEnv.ERROR ->
+                                begin   
+                                     if (verbose) then Printf.printf "Error on free? \n" 
+                                end
+                    end
+                    else
+                    (* check if stub *)
                     let is_stub, vsa,ha,hf=Stubfunc_v.stub a n.vsa n.ha n.hf number_chunk (n.addr,n.unloop) func_name (!current_call) backtrack  in
                     if is_stub 
                         then 
@@ -1314,7 +1379,7 @@ struct
                             n.hf<-hf
                     else
                         try
-                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs list_malloc list_free in
+                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs  in
                             if (List.exists (fun (addr,x,n) -> x=func_name) backtrack) 
                                 then
                                 let () = if (verbose) then Printf.printf "Rec %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack ))  in
@@ -1338,7 +1403,7 @@ struct
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = flush Pervasives.stdout in
-                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs list_malloc list_free (((n.addr,n.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values in
+                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,n.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = check_uaf func_bbs (((n.addr,n.unloop),func_name,!current_call)::backtrack) n.addr in 
                                     let () = if(details_values) then current_call:=number_call_prev in
@@ -1390,6 +1455,7 @@ struct
 (*                                let vsa = restore_stack_frame n.vsa vsa in*)
                                 let vsa = Absenv_v.restore_esp n.vsa in
                                 n.vsa <- ignore_call vsa number_chunk (((n.addr,n.unloop),func_name,!current_call)::backtrack)
+                end
                 else
                     n.vsa<-Ir_v.function_transfer n.stmt n.vsa n.hf number_chunk (n.addr,n.unloop) func_name (!current_call) backtrack; (* TODO should be number_init *)
         in
@@ -1407,7 +1473,8 @@ struct
                     let _ = bb.is_done<-true in
                     let () = 
                         if(details_values)
-                            then
+                            then (* for now, only keeping the last vsa of a bb *)
+                            let () = bb.nodes <- [List.hd (List.rev bb.nodes)] in
                             saved_values:=(bb,(!current_call))::(!saved_values)
                     in
                     let () = visit_after bb in
@@ -1431,18 +1498,20 @@ struct
             | hd::tl ->
                 ((List.fold_left (fun x y-> Absenv_v.merge x y.vsa) hd.vsa tl),(List.fold_left (fun x y ->Absenv_v.merge_he x y.ha) hd.ha tl),( List.fold_left (fun x y ->Absenv_v.merge_he x y.hf) hd.hf tl ),score_heap_use func_bbs func_name (!score_childs))
     
-    let rec explore_graph func list_funcs backtrack ref_count verbose show_call print_graph =
+    let rec explore_graph func list_funcs backtrack ref_count max_count verbose show_call print_graph =
+        if (!ref_count > max_count) then raise MAX_EXPLORE
+        else
         let (func_eip,func_bbs,func_name)=func in
         let rec explore_nodes_rec n fathers bb_ori=
             if ((land) n.type_node type_NODE_FREE)>0 then ()
             else if ((land) n.type_node type_NODE_CALL)>0 
                 then
-                let addr_call=Ir_v.get_value_jump n.stmt in
+                let addr_call=Ir_v.get_value_jump n.stmt n.vsa in
                 match addr_call with
                     | None -> ()
                     | Some a -> 
                         try
-                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs [] [] in
+                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs  in
                                 if (List.exists (fun x -> x=func_name) backtrack) then ()
                                 else
                                    let (func_eip,func_bbs)=(func_eip_ori,func_bbs_ori) in
@@ -1459,7 +1528,7 @@ struct
                                         let () = saved_call := (bb_ori,func_eip,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
-                                let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count verbose show_call print_graph in
+                                let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count max_count verbose show_call print_graph in
                                 if(print_graph) then current_call:=number_call_prev
                         with
                             Not_found -> ()
@@ -1482,10 +1551,14 @@ struct
     let launch_supercallgraph_analysis func_name list_funcs list_malloc list_free dir_output verbose show_call print_graph =
         let count = ref 10 in
         try 
-            let (eip,bbs,name) = find_func_name func_name list_funcs list_malloc list_free in
+            let (eip,bbs,name) = find_func_name func_name list_funcs  in
             let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs in
-            let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count verbose show_call print_graph in
-            let () = Printf.printf "Number of func from %s : %d\n" func_name (!count) in
+            let () = try
+                let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count 400 verbose show_call print_graph in
+                Printf.printf "Number of func from %s : %d\n" func_name (!count) 
+            with
+                MAX_EXPLORE -> Printf.printf "Number of func from %s : MAX\n" func_name
+            in
             let _ = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
             (!count)
         with
@@ -1504,13 +1577,14 @@ struct
                 let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
                 (!count) 
 
-    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free details_values =
+    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free details_values merge_output =
         try 
-            let (eip,bbs,name) = find_func_name func_name list_funcs list_malloc list_free in
+            let (eip,bbs,name) = find_func_name func_name list_funcs in
             let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
             let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free details_values in
             let _ = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
-            let () = print_sg dir_output in
+            let () = if(merge_output) then print_sg_exp dir_output else print_sg dir_output 
+            in
             if(details_values)
                 then print_values dir_output (!saved_values) (!saved_call) 
         with

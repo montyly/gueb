@@ -21,6 +21,7 @@ sig
     val merge : absenv list-> absenv list-> absenv list
     val update : absenv list-> absenv list-> absenv list(* init -> input ->   *)
 
+    val get_integer_values : valuesSet -> int option list
     val get_value : absenv list -> nameVal -> valuesSet
     val get_value_create: absenv list -> nameVal -> int ref -> ((int*int)*string*int) list -> absenv list * valuesSet
     val set_value : absenv list -> nameVal-> valuesSet -> absenv list
@@ -37,7 +38,14 @@ sig
 
     val add : valuesSet -> valuesSet -> valuesSet
     val sub : valuesSet -> valuesSet -> valuesSet
+    val mul : valuesSet -> valuesSet -> valuesSet
+    val div : valuesSet -> valuesSet -> valuesSet
     val and_op : valuesSet -> valuesSet -> valuesSet
+    val or_op : valuesSet -> valuesSet -> valuesSet
+    val xor_op : valuesSet -> valuesSet -> valuesSet
+    val modulo : valuesSet -> valuesSet -> valuesSet
+    val bsh : valuesSet -> valuesSet -> valuesSet
+    val is_zero : valuesSet -> valuesSet
 
     val pp_name : nameVal -> string
     val pp_valuesset : valuesSet -> string
@@ -283,6 +291,9 @@ struct
     let init_reg r=
         {name=Reg (r);values=Values ([{base_vs=Init (r);offsets=Offsets [0]}])};;
 
+    let init_reg_base r =
+        {name=Reg (r);values=Values ([{base_vs=Constant ;offsets=Offsets [0]}])};;
+
     let init_reg_val r v=
         {name=Reg (r);values=v};;
 
@@ -290,7 +301,7 @@ struct
             [init_reg_val reg TOP ];;
     
     let init_first =
-            [init_reg "esp";init_reg "ebp";init_reg "eax"];;
+            [init_reg "esp";init_reg "ebp";init_reg "eax" ; init_reg_base "dsbase" ; init_reg_base "ssbase"];;
 
     let init_chunk n  type_chunk state=
         {base_chunk=n;size=0;type_chunk=type_chunk;state_alloc=state;state_free=[]};;
@@ -371,12 +382,12 @@ struct
         let rec merge_he_rec h l =
             match h with
             | [] -> l
-            | hd::tl -> merge_he_rec (List.filter (fun x -> x.base_chunk!=hd.base_chunk) tl)  (hd::l)
+            | hd::tl -> merge_he_rec (List.filter (fun x ->  hd.type_chunk != x.type_chunk ||  x.base_chunk!=hd.base_chunk ) tl)  (hd::l)
         in merge_he_rec (h1@h2) [];;
             
     let merge_alloc_free_conservatif ha hf =
-        let is_not b hf=List.exists (fun x -> x.base_chunk=b) hf in
-        (List.filter (fun x-> not( is_not x.base_chunk hf)) ha);;
+        let is_in b hf=List.exists (fun x -> x.base_chunk=b.base_chunk && x.type_chunk = b.type_chunk) hf in
+        (List.filter (fun x-> not( is_in x hf)) ha);;
 
  
     let merge_values values =
@@ -442,6 +453,16 @@ struct
         with
         Not_found -> {name=name;values=values}::absenvs
         
+    let get_integer_values vs =
+        match vs with 
+        | Values v ->
+            let v = List.filter ( fun x -> match x.base_vs with | Constant -> true |  _ -> false ) v in
+            let offsets = List.map (fun x -> x.offsets) v in
+            if (List.exists (fun x -> match x with | TOP_Offsets -> true | _ -> false ) offsets) then [None]
+            else
+                let offsets = List.map (fun x -> match x with | Offsets o -> (List.map (fun y -> Some y) o) | _ -> [Some 0] ) offsets in
+                List.concat offsets
+        | TOP -> [None]
 
     let get_value absenvs name =
         try
@@ -538,8 +559,10 @@ struct
               (
                 (List.map 
                     (fun x ->
-                        if (hd-x)>=0 then (hd-x)   
-                        else ((mod) (((mod) (hd-x) 0x100000000)+0x100000000) 0x100000000) (* Ocaml return a negative number with mod, so need this conversion *)
+                            if (x-hd) >=0 then (x-hd) 
+                            else ((mod) (((mod) (x-hd) 0x100000000)+0x100000000) 0x100000000) 
+(*                        if (hd-x)>=0 then (hd-x)   
+                        else ((mod) (((mod) (hd-x) 0x100000000)+0x100000000) 0x100000000) (* Ocaml return a negative number with mod, so need this conversion *)*)
                     ) 
                 o1)
              @l)
@@ -548,6 +571,115 @@ struct
         | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
         | Offsets o1, Offsets o2 -> remove_dupplicate (sub_offsets_rec o1 o2 []);;
 
+    let mul_offsets o1 o2 =
+        let rec mul_offsets_rec o1 o2 l =
+            match o2 with
+            | [] -> Offsets l
+            | hd::tl -> mul_offsets_rec o1 tl 
+              (
+                   (List.map 
+                        (fun x -> ( x * hd  )) 
+                o1)
+             @l)
+        in 
+        match (o1,o2) with
+        | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
+        | Offsets o1, Offsets o2 -> remove_dupplicate (mul_offsets_rec o1 o2 []);;
+
+    let div_offsets o1 o2 =
+        let rec div_offsets_rec o1 o2 l =
+            match o2 with
+            | [] -> Offsets l
+            | hd::tl -> div_offsets_rec o1 tl 
+              (
+                   (List.map 
+                        (fun x -> if(hd!=0) then x / hd  else x ) 
+                o1)
+             @l)
+        in 
+        match (o1,o2) with
+        | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
+        | Offsets o1, Offsets o2 -> remove_dupplicate (div_offsets_rec o1 o2 []);;
+
+    let and_offsets o1 o2 =
+        let rec and_offsets_rec o1 o2 l =
+            match o2 with
+            | [] -> Offsets l
+            | hd::tl -> and_offsets_rec o1 tl 
+              (
+                   (List.map 
+                        (fun x -> (land) x hd  ) 
+                o1)
+             @l)
+        in 
+        match (o1,o2) with
+        | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
+        | Offsets o1, Offsets o2 -> remove_dupplicate (and_offsets_rec o1 o2 []);;
+
+    let mod_offsets o1 o2 =
+        let rec mod_offsets_rec o1 o2 l =
+            match o2 with
+            | [] -> Offsets l
+            | hd::tl -> mod_offsets_rec o1 tl 
+              (
+                   (List.map 
+                        (fun x -> (if (hd !=0) then (mod) x hd else x ) )
+                o1)
+             @l)
+        in 
+        match (o1,o2) with
+        | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
+        | Offsets o1, Offsets o2 -> remove_dupplicate (mod_offsets_rec o1 o2 []);;
+
+    let xor_offsets o1 o2 =
+        let rec xor_offsets_rec o1 o2 l =
+            match o2 with
+            | [] -> Offsets l
+            | hd::tl -> xor_offsets_rec o1 tl 
+              (
+                   (List.map 
+                        (fun x -> (lxor) x hd  ) 
+                o1)
+             @l)
+        in 
+        match (o1,o2) with
+        | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
+        | Offsets o1, Offsets o2 -> remove_dupplicate (xor_offsets_rec o1 o2 []);;
+ 
+   let or_offsets o1 o2 =
+        let rec or_offsets_rec o1 o2 l =
+            match o2 with
+            | [] -> Offsets l
+            | hd::tl -> or_offsets_rec o1 tl 
+              (
+                   (List.map 
+                        (fun x -> (lor) x hd  ) 
+                o1)
+             @l)
+        in 
+        match (o1,o2) with
+        | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
+        | Offsets o1, Offsets o2 -> remove_dupplicate (or_offsets_rec o1 o2 []);;
+
+
+
+    let bsh_offsets o1 o2 =
+        let rec bsh_offsets_rec o1 o2 l =
+            match o2 with
+            | [] -> Offsets l
+            | hd::tl -> bsh_offsets_rec o1 tl 
+              (
+                   (List.map 
+                        (fun x -> if(hd>0) then (lsl) x hd
+                                  else (lsr) x hd
+
+                   )
+                o1)
+             @l)
+        in 
+        match (o1,o2) with
+        | TOP_Offsets,_| _,TOP_Offsets -> TOP_Offsets
+        | Offsets o1, Offsets o2 -> remove_dupplicate (bsh_offsets_rec o1 o2 []);;
 
     (* 
      * arthmetique operation
@@ -575,11 +707,11 @@ struct
                 then
                 let head=List.hd b in
                 let offset_b=head.offsets in
-                Values (List.map (fun x -> ignore( x.offsets<-sub_offsets offset_b x.offsets) ; x) a)
+                Values (List.map (fun x -> ignore( x.offsets<-sub_offsets x.offsets  offset_b ) ; x) a)
            else
                 TOP;;
       
-    let and_op a b = (*TODO should rewrite this *)
+ (*   let and_op a b = (*TODO should rewrite this *)
         match (a,b) with
         | (TOP,_) | (_,TOP) -> TOP
         | (Values a,Values b) ->
@@ -603,6 +735,144 @@ struct
                     else TOP
             else
                 TOP;;
+*)
+    let mul a b = 
+        match (a,b) with
+        | (TOP,_) | (_,TOP) -> TOP
+        | (Values a,Values b) ->
+            if (((List.length a)==1) && ((List.hd a).base_vs == Constant))
+                then
+                let head=List.hd a in
+                let offset_a=head.offsets in
+                Values (List.map (fun x -> ignore(x.offsets<-mul_offsets offset_a x.offsets) ; x ) b)
+           else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
+                then
+                let head=List.hd b in
+                let offset_b=head.offsets in
+                Values (List.map (fun x -> ignore( x.offsets<-mul_offsets offset_b x.offsets) ; x) a)
+           else
+                TOP;;
+
+    let div a b = 
+        match (a,b) with
+        | (TOP,_) | (_,TOP) -> TOP
+        | (Values a,Values b) ->
+            if (((List.length a)==1) && ((List.hd a).base_vs == Constant))
+                then
+                let head=List.hd a in
+                let offset_a=head.offsets in
+                Values (List.map (fun x -> ignore(x.offsets<-div_offsets offset_a x.offsets) ; x ) b)
+           else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
+                then
+                let head=List.hd b in
+                let offset_b=head.offsets in
+                Values (List.map (fun x -> ignore( x.offsets<-div_offsets x.offsets  offset_b ) ; x) a)
+           else
+                TOP;;
+
+    let and_op a b = 
+        match (a,b) with
+        | (TOP,_) | (_,TOP) -> TOP
+        | (Values a,Values b) ->
+            if (((List.length a)==1) && ((List.hd a).base_vs == Constant))
+                then
+                let head=List.hd a in
+                let offset_a=head.offsets in
+                Values (List.map (fun x -> ignore(x.offsets<-and_offsets offset_a x.offsets) ; x ) b)
+           else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
+                then
+                let head=List.hd b in
+                let offset_b=head.offsets in
+                Values (List.map (fun x -> ignore( x.offsets<-and_offsets offset_b x.offsets) ; x) a)
+           else
+                TOP;;
+     
+
+    let or_op a b = 
+        match (a,b) with
+        | (TOP,_) | (_,TOP) -> TOP
+        | (Values a,Values b) ->
+            if (((List.length a)==1) && ((List.hd a).base_vs == Constant))
+                then
+                let head=List.hd a in
+                let offset_a=head.offsets in
+                Values (List.map (fun x -> ignore(x.offsets<-or_offsets offset_a x.offsets) ; x ) b)
+           else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
+                then
+                let head=List.hd b in
+                let offset_b=head.offsets in
+                Values (List.map (fun x -> ignore( x.offsets<-or_offsets offset_b x.offsets) ; x) a)
+           else
+                TOP;;
+
+
+    let xor_op a b = 
+        match (a,b) with
+        | (TOP,_) | (_,TOP) -> TOP
+        | (Values a,Values b) ->
+            if (((List.length a)==1) && ((List.hd a).base_vs == Constant))
+                then
+                let head=List.hd a in
+                let offset_a=head.offsets in
+                Values (List.map (fun x -> ignore(x.offsets<-xor_offsets offset_a x.offsets) ; x ) b)
+           else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
+                then
+                let head=List.hd b in
+                let offset_b=head.offsets in
+                Values (List.map (fun x -> ignore( x.offsets<-xor_offsets offset_b x.offsets) ; x) a)
+           else
+                TOP;;
+ 
+    let modulo a b =
+        match (a,b) with
+        | (TOP,_) | (_,TOP) -> TOP
+        | (Values a,Values b) ->
+            if (((List.length a)==1) && ((List.hd a).base_vs == Constant))
+                then
+                let head=List.hd a in
+                let offset_a=head.offsets in
+                Values (List.map (fun x -> ignore(x.offsets<-mod_offsets offset_a x.offsets) ; x ) b)
+           else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
+                then
+                let head=List.hd b in
+                let offset_b=head.offsets in
+                Values (List.map (fun x -> ignore( x.offsets<-mod_offsets x.offsets offset_b ) ; x) a)
+           else
+                TOP;;
+
+    let bsh a b =
+        match (a,b) with
+        | (TOP,_) | (_,TOP) -> TOP
+        | (Values a,Values b) ->
+            if (((List.length a)==1) && ((List.hd a).base_vs == Constant))
+                then
+                let head=List.hd a in
+                let offset_a=head.offsets in
+                Values (List.map (fun x -> ignore(x.offsets<-bsh_offsets offset_a x.offsets) ; x ) b)
+           else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
+                then
+                let head=List.hd b in
+                let offset_b=head.offsets in
+                Values (List.map (fun x -> ignore( x.offsets<-bsh_offsets x.offsets offset_b ) ; x) a)
+           else
+                TOP;;
+
+
+
+    let is_zero v =
+        match v with
+        | Values a ->
+               if((List.length a) == 1 && (List.hd a).base_vs == Constant) then
+               (
+                   match (List.hd (a)).offsets with
+                   | Offsets o ->
+                        if((List.length o)==1 && (List.hd o) == 0) then Values ([{base_vs= Constant; offsets=Offsets([1])}])
+                        else Values ([{base_vs= Constant; offsets=Offsets([0])}])
+
+                   | _ -> Values ([{base_vs= Constant; offsets=Offsets([0])}])
+               )
+               else Values ([{base_vs= Constant; offsets=Offsets([0])}])
+        | _ -> Values ([{base_vs= Constant; offsets=Offsets([0])}]) 
 
     (*
      * Remove elem in list that are not coming from the heap

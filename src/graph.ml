@@ -1473,8 +1473,8 @@ struct
                     let _ = bb.is_done<-true in
                     let () = 
                         if(details_values)
-                            then (* for now, only keeping the last vsa of a bb *)
-                            let () = bb.nodes <- [List.hd (List.rev bb.nodes)] in
+                            then (* for now, only keeping the last vsa of a bb or not*)
+                         (*   let () = bb.nodes <- [List.hd (List.rev bb.nodes)] in*)
                             saved_values:=(bb,(!current_call))::(!saved_values)
                     in
                     let () = visit_after bb in

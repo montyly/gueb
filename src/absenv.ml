@@ -171,7 +171,7 @@ struct
      * Comparaison functions
      * *)
     let same_chunk h1 h2 =
-        h1.base_chunk==h2.base_chunk && h1.size==h2.size && h1.type_chunk==h2.type_chunk ;;
+        h1.base_chunk=h2.base_chunk (*&& h1.size=h2.size*) && h1.type_chunk=h2.type_chunk ;;
 
 
     let same_base b1 b2 =

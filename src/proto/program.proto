@@ -37,7 +37,8 @@ message function
 	repeated uint64 calls                   = 5;
 	repeated uint64 retns                   = 6;
 	required uint64 eip                     = 7;
-	required uint64 number_unlooping        = 8;
+	required uint64 addr_to_call            = 8;
+	required uint64 number_unlooping        = 9;
 }
 
 message program

@@ -46,6 +46,7 @@ and Function_:
       mutable calls: Program_piqi.uint64 list;
       mutable retns: Program_piqi.uint64 list;
       mutable eip: Program_piqi.uint64;
+      mutable addr_to_call: Program_piqi.uint64;
       mutable number_unlooping: Program_piqi.uint64;
     }
   end = Function_
@@ -112,7 +113,8 @@ and parse_function_ x =
   let _calls, x = Piqirun.parse_repeated_field 5 parse_uint64 x in
   let _retns, x = Piqirun.parse_repeated_field 6 parse_uint64 x in
   let _eip, x = Piqirun.parse_required_field 7 parse_uint64 x in
-  let _number_unlooping, x = Piqirun.parse_required_field 8 parse_uint64 x in
+  let _addr_to_call, x = Piqirun.parse_required_field 8 parse_uint64 x in
+  let _number_unlooping, x = Piqirun.parse_required_field 9 parse_uint64 x in
   Piqirun.check_unparsed_fields x;
   {
     Function_.name = _name;
@@ -122,6 +124,7 @@ and parse_function_ x =
     Function_.calls = _calls;
     Function_.retns = _retns;
     Function_.eip = _eip;
+    Function_.addr_to_call = _addr_to_call;
     Function_.number_unlooping = _number_unlooping;
   }
 
@@ -169,8 +172,9 @@ and gen__function_ code x =
   let _calls = Piqirun.gen_repeated_field 5 gen__uint64 x.Function_.calls in
   let _retns = Piqirun.gen_repeated_field 6 gen__uint64 x.Function_.retns in
   let _eip = Piqirun.gen_required_field 7 gen__uint64 x.Function_.eip in
-  let _number_unlooping = Piqirun.gen_required_field 8 gen__uint64 x.Function_.number_unlooping in
-  Piqirun.gen_record code (_name :: _nodes :: _blocks :: _block_relations :: _calls :: _retns :: _eip :: _number_unlooping :: [])
+  let _addr_to_call = Piqirun.gen_required_field 8 gen__uint64 x.Function_.addr_to_call in
+  let _number_unlooping = Piqirun.gen_required_field 9 gen__uint64 x.Function_.number_unlooping in
+  Piqirun.gen_record code (_name :: _nodes :: _blocks :: _block_relations :: _calls :: _retns :: _eip :: _addr_to_call :: _number_unlooping :: [])
 
 and gen__program code x =
   let _functions = Piqirun.gen_repeated_field 1 gen__function_ x.Program.functions in
@@ -219,6 +223,7 @@ and default_function_ () =
     Function_.calls = [];
     Function_.retns = [];
     Function_.eip = default_uint64 ();
+    Function_.addr_to_call = default_uint64 ();
     Function_.number_unlooping = default_uint64 ();
   }
 and default_program () =
@@ -228,5 +233,4 @@ and default_program () =
   }
 
 
-let piqi = "\226\202\2304\007program\226\231\249\238\001\023piqi/program.proto.piqi\162\244\146\155\011\tcom.proto\218\244\134\182\012\128\001\138\233\142\251\014z\210\203\242$/\232\146\150q\002\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\014call-to-malloc\210\171\158\194\006\006uint64\210\203\242$-\232\146\150q\004\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\012call-to-free\210\171\158\194\006\006uint64\218\164\238\191\004\014heap-functions\218\244\134\182\012i\138\233\142\251\014c\210\203\242$%\232\146\150q\002\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\004addr\210\171\158\194\006\006uint64\210\203\242$*\232\146\150q\004\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\tnode-desc\210\171\158\194\006\006string\218\164\238\191\004\004node\218\244\134\182\012k\138\233\142\251\014e\210\203\242$%\232\146\150q\002\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\004addr\210\171\158\194\006\006uint64\210\203\242$+\232\146\150q\004\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\nnodes-addr\210\171\158\194\006\006uint64\218\164\238\191\004\005block\218\244\134\182\012o\138\233\142\251\014i\210\203\242$'\232\146\150q\002\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\006father\210\171\158\194\006\006uint64\210\203\242$$\232\146\150q\004\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\003son\210\171\158\194\006\006uint64\218\164\238\191\004\014block-relation\218\244\134\182\012\133\003\138\233\142\251\014\254\002\210\203\242$%\232\146\150q\002\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\004name\210\171\158\194\006\006string\210\203\242$$\232\146\150q\004\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\005nodes\210\171\158\194\006\004node\210\203\242$&\232\146\150q\006\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\006blocks\210\171\158\194\006\005block\210\203\242$8\232\146\150q\b\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\015block-relations\210\171\158\194\006\014block-relation\210\203\242$&\232\146\150q\n\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\005calls\210\171\158\194\006\006uint64\210\203\242$&\232\146\150q\012\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\005retns\210\171\158\194\006\006uint64\210\203\242$$\232\146\150q\014\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\003eip\210\171\158\194\006\006uint64\210\203\242$1\232\146\150q\016\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\016number-unlooping\210\171\158\194\006\006uint64\218\164\238\191\004\bfunction\218\244\134\182\012{\138\233\142\251\014u\210\203\242$,\232\146\150q\002\152\182\154\152\004\250\248\214\130\001\218\164\238\191\004\tfunctions\210\171\158\194\006\bfunction\210\203\242$2\232\146\150q\004\152\182\154\152\004\223\162\138\147\001\218\164\238\191\004\theap-func\210\171\158\194\006\014heap-functions\218\164\238\191\004\007program"
 include Program_piqi

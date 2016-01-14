@@ -36,7 +36,7 @@ struct
     {
         addr : int ;
         stmt : Ir_v.ir_stmt;
-        unloop : int ;
+     (*   unloop : int ;*)
         mutable type_node : int;
         mutable init : Absenv_v.absenv list;
         mutable vsa : Absenv_v.absenv list;
@@ -394,7 +394,7 @@ struct
         let find_leafs n = 
             let nodes = Hashtbl.find tbl n in
             let leafs = List.find_all (fun x -> List.length x.sons == 0) nodes in
-            let is_loop n = List.exists (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop != n.unloop)) nodes in
+            let is_loop n = List.exists (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop != x.unloop)) nodes in
             List.filter (fun x -> not (is_loop x)) leafs 
         in
         let txt = List.fold_left (
@@ -608,7 +608,7 @@ struct
 
     let create_nodes arg =
         let (stmt,addr,unloop)=arg in
-        {addr=addr;stmt=stmt;unloop=42;type_node=type_NODE_NORMAL;init = [] ; vsa=[];ha=[];hf=[]};;
+        {addr=addr;stmt=stmt;type_node=type_NODE_NORMAL;init = [] ; vsa=[];ha=[];hf=[]};;
    
     let create_bbs_nodes list_nodes list_bb =
         let find list_addr list_nodes=List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes in
@@ -682,7 +682,7 @@ struct
     (* hack number use to differenciate new node when you create it with kosaraju *)
     let hack_number=ref 0;;
     
-    let new_node node val_unloop = {addr=node.addr;stmt=node.stmt;unloop=val_unloop; type_node=node.type_node;init=node.init;vsa=node.vsa;ha=node.ha;hf=node.hf};;
+    let new_node node = {addr=node.addr;stmt=node.stmt; type_node=node.type_node;init=node.init;vsa=node.vsa;ha=node.ha;hf=node.hf};;
    
     let new_bb bb unloop= 
         let _ = number_bbs:=(!number_bbs)+1 in
@@ -933,7 +933,7 @@ struct
     let print_addr l = (String.concat " " (List.map (fun x -> Printf.sprintf "0x%x:%d (%d)" x.addr_bb x.unloop x.uniq_id) l))  
     
     let find_node n nodes n_diff = 
-            try List.find (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop=n.unloop+n_diff)) nodes
+            try List.find (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop=x.unloop+n_diff)) nodes
             with Not_found -> n 
     
     let find_node_no_unloop n nodes  = 
@@ -1014,7 +1014,7 @@ struct
     with 
       Not_found -> Printf.printf "Eip not found ! \n"
     
-    let find_nodes_from_addr list_addr list_nodes val_unloop=List.map (fun x -> new_node x val_unloop ) (List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes );;
+    let find_nodes_from_addr list_addr list_nodes val_unloop=List.map (fun x -> new_node x  ) (List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes );;
     
     let parse_protobuf_number func number_unloop  =
         let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
@@ -1076,11 +1076,11 @@ struct
         (if ((land) t type_NODE_ENTRY>0) then "Entry " else "")^
         (if ((land) t type_NODE_NOT_LOAD>0) then "Not load " else "");;
     
-    let pp_nodes_value n =
+    let pp_nodes_value n val_unloop  =
         let rec pp_nodes_values_rec n l =
             match n with 
             | [] -> l
-            | hd::tl -> pp_nodes_values_rec tl ((Printf.sprintf "%x:%d " hd.addr hd.unloop )^(Ir_v.print_stmt hd.stmt)^(Printf.sprintf " type %s" (pp_type_node hd.type_node))^" : \n"^(Absenv_v.pp_absenvs hd.vsa)^(Printf.sprintf "Ha : %s \nHf : %s\n\n" (Absenv_v.pp_he hd.ha) (Absenv_v.pp_he hd.hf) )^l) 
+            | hd::tl -> pp_nodes_values_rec tl ((Printf.sprintf "%x:%d " hd.addr val_unloop )^(Ir_v.print_stmt hd.stmt)^(Printf.sprintf " type %s" (pp_type_node hd.type_node))^" : \n"^(Absenv_v.pp_absenvs hd.vsa)^(Printf.sprintf "Ha : %s \nHf : %s\n\n" (Absenv_v.pp_he hd.ha) (Absenv_v.pp_he hd.hf) )^l) 
         in pp_nodes_values_rec n "";;
     
     let pp_nodes_value_unloop n =
@@ -1246,8 +1246,9 @@ struct
             Not_found -> Hashtbl.add sg_uaf key (c_alloc,state)
      
     let check_uaf bbs backtrack addr=
-        let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in
-        let uaf_result=List.map Ir_v.check_uaf (List.map (fun x -> (x.stmt,x.vsa,x.hf,(x.addr,x.unloop))) nodes) in
+(*        let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in/*)
+        List.iter (fun (nodes,unloop) ->
+        let uaf_result=List.map Ir_v.check_uaf (List.map (fun x -> (x.stmt,x.vsa,x.hf,(x.addr,unloop))) nodes) in
         if (List.length uaf_result)>0 
         then
             List.iter (
@@ -1264,7 +1265,8 @@ struct
             | None -> false
             | Some x -> true
           ) uaf_result) 
-        then Printf.printf "Uaf find in %x Backtrack %s \n ###################################################################\n" addr (String.concat " " (List.map print_backtrack backtrack )) ;;
+        then Printf.printf "Uaf find in %x Backtrack %s \n ###################################################################\n" addr (String.concat " " (List.map print_backtrack backtrack ))
+        ) (List.map (fun x -> (x.nodes,x.unloop) ) bbs )
     
     let find_func_name func_name list_func  =
         let func =(List.find (fun (x:Program_piqi.function_) -> x.name = func_name) list_func) in 
@@ -1313,7 +1315,7 @@ struct
             let _ =
                 if(show_values) 
                     then
-                    let _ = Printf.printf "Func transfer node %s\n %s" func_name (pp_nodes_value [n]) in
+                    let _ = Printf.printf "Func transfer node %s\n %s" func_name (pp_nodes_value [n] bb_ori.unloop) in
                     flush Pervasives.stdout 
             in
 (*            if ((land) n.type_node type_NODE_FREE)>0 the)
@@ -1327,11 +1329,11 @@ struct
                 match addr_call with
                 | None -> (* if unknow jump *) 
                     let vsa = Absenv_v.restore_esp n.vsa in
-                    n.vsa <- ignore_call vsa number_chunk (((n.addr,n.unloop),func_name,!current_call)::backtrack)
+                    n.vsa <- ignore_call vsa number_chunk (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack)
                 | Some a ->
                     (* If call to malloc , should may be merge this into the stub module *) 
                     if (List.exists (fun x-> x=a) malloc_addr) then
-                        let new_state = ((n.addr,n.unloop),func_name,(!current_call))::backtrack in
+                        let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
                         let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
                         let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
                         let () = number_chunk:=!number_chunk+1 in
@@ -1350,17 +1352,17 @@ struct
                                 let df = Absenv_v.check_df n.hf vals_filter in
                                 match df with
                                 | [] ->     
-                                    let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,n.unloop),func_name,!current_call)::backtrack) show_free  in
+                                    let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) show_free  in
                                     let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                     n.hf<-hf
                                 | _ -> 
                                     List.iter (
                                         fun c -> 
-                                          add_uaf c [(((n.addr,n.unloop),"DF "^func_name,(!current_call))::backtrack)]
+                                          add_uaf c [(((n.addr,bb_ori.unloop),"DF "^func_name,(!current_call))::backtrack)]
                                     ) df                 
                             with
                                 Not_found -> 
-                                    let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,n.unloop),func_name,!current_call)::backtrack) show_free in
+                                    let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) show_free in
                                     let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                     n.hf<-hf
                         with 
@@ -1371,7 +1373,7 @@ struct
                     end
                     else
                     (* check if stub *)
-                    let is_stub, vsa,ha,hf=Stubfunc_v.stub a n.vsa n.ha n.hf number_chunk (n.addr,n.unloop) func_name (!current_call) backtrack  in
+                    let is_stub, vsa,ha,hf=Stubfunc_v.stub a n.vsa n.ha n.hf number_chunk (n.addr,bb_ori.unloop) func_name (!current_call) backtrack  in
                     if is_stub 
                         then 
                             let _ = n.vsa<-vsa in
@@ -1385,7 +1387,7 @@ struct
                                 let () = if (verbose) then Printf.printf "Rec %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack ))  in
                                 let _ =flush Pervasives.stdout in
                                 let vsa = Absenv_v.restore_esp n.vsa in
-                                n.vsa <- ignore_call vsa number_chunk (((n.addr,n.unloop),func_name,!current_call)::backtrack)
+                                n.vsa <- ignore_call vsa number_chunk (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack)
                             else
                                 let (func_eip,func_bbs)=(func_eip_ori,func_bbs_ori) in
                                 let number_call_prev = (!current_call) in
@@ -1396,16 +1398,16 @@ struct
                                         let () = saved_call := (bb_ori,func_eip,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
-                                let _ = List.iter (fun x -> init_value x (((n.addr,n.unloop),func_name,!current_call)::backtrack) func_name) func_bbs in
+                                let _ = List.iter (fun x -> init_value x (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) func_name) func_bbs in
                                 let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).init<-n.vsa in
                                 let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).ha<-n.ha in
                                 let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).hf<-n.hf in
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = flush Pervasives.stdout in
-                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,n.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values in
+                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                    let _ = check_uaf func_bbs (((n.addr,n.unloop),func_name,!current_call)::backtrack) n.addr in 
+                                    let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
                                     let () = if(details_values) then current_call:=number_call_prev in
                                     let _ = score_childs:=(||) (!score_childs) score in
                                     try
@@ -1415,7 +1417,7 @@ struct
                                     with
                                         | AbsEnv.ERROR -> 
                                             let _ = if (verbose) then 
-                                                let _ = Printf.printf "Func transfer node Error Filter esp / ebp \n %s" (pp_nodes_value [n]) in
+                                                let _ = Printf.printf "Func transfer node Error Filter esp / ebp \n %s" (pp_nodes_value [n] bb_ori.unloop) in
                                                 let _ = Printf.printf "\n---\n" in
                                                 let _ = Printf.printf "%s\n" (Absenv_v.pp_absenvs vsa) in 
                                                 flush Pervasives.stdout 
@@ -1428,11 +1430,11 @@ struct
                                 with
                                     | NOT_RET (vsa,ha,hf,score)  ->
                                         let _ = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                        let _ = check_uaf func_bbs (((n.addr,n.unloop),func_name,!current_call)::backtrack) n.addr in
+                                        let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
                                         let () = if(details_values) then current_call:=number_call_prev in
                                         let _ = score_childs:=(||) (!score_childs) score in
                                         let _ = if (verbose) then 
-                                            let _ = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n]) in
+                                            let _ = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n] bb_ori.unloop) in
                                             let _ = Printf.printf "\n---\n" in
                                             Printf.printf "%s\n" (Absenv_v.pp_absenvs vsa) 
                                         in
@@ -1443,7 +1445,7 @@ struct
                                         n.hf<-hf;                                               
                                    | NOT_RET_NOT_LEAF ->
                                         let () = if (verbose) then Printf.printf "End call (NOT RET NOT LEAF) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                        let _ = check_uaf func_bbs (((n.addr,n.unloop),func_name,!current_call)::backtrack) n.addr in
+                                        let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
                                         let () = if(details_values) then current_call:=number_call_prev in
                                         let _ = n.vsa <- restore_stack_frame n.vsa vsa in
                                         let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
@@ -1454,10 +1456,10 @@ struct
                                 let () = if(verbose) then Printf.printf "Not found 0x%x\n" a in
 (*                                let vsa = restore_stack_frame n.vsa vsa in*)
                                 let vsa = Absenv_v.restore_esp n.vsa in
-                                n.vsa <- ignore_call vsa number_chunk (((n.addr,n.unloop),func_name,!current_call)::backtrack)
+                                n.vsa <- ignore_call vsa number_chunk (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack)
                 end
                 else
-                    n.vsa<-Ir_v.function_transfer n.stmt n.vsa n.hf number_chunk (n.addr,n.unloop) func_name (!current_call) backtrack; (* TODO should be number_init *)
+                    n.vsa<-Ir_v.function_transfer n.stmt n.vsa n.hf number_chunk (n.addr,bb_ori.unloop) func_name (!current_call) backtrack; (* TODO should be number_init *)
         in
             let rec value_analysis_rec bb=
                 if( (not bb.is_done) && (List.for_all (fun x -> x.is_done) bb.fathers)) 
@@ -1572,8 +1574,6 @@ struct
                 let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
                 (!count) 
             | NOT_RET_NOT_LEAF -> 
-                let () = if(verbose) then Printf.printf "Not ret\n" in
-                let () = Printf.printf "Number of func %s %d\n" func_name (!count) in
                 let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
                 (!count) 
 

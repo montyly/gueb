@@ -36,7 +36,6 @@ struct
     {
         addr : int ;
         stmt : Ir_v.ir_stmt;
-     (*   unloop : int ;*)
         mutable type_node : int;
         mutable init : Absenv_v.absenv list;
         mutable vsa : Absenv_v.absenv list;
@@ -55,7 +54,34 @@ struct
         mutable is_done : bool; (*value analysis done *)
     };;
 
-    type site = ((int*int)*string*int)
+    type site_type = 
+        | SITE_NORMAL
+        | SITE_ALLOC
+        | SITE_FREE
+        | SITE_USE
+
+    (* site : (addr,it) * func_name * call_n *)
+    type site = (int*int)*string*int
+
+    (* On a list of site, add type, t for the last, SITE_NORMAL for others *)
+    let add_type sites t = 
+        let add_type_ ((addr,it),s,n) t = (((addr,it),s,n),t) in
+        let head = List.hd sites in
+        let head = add_type_ head t in
+        let tl = List.tl sites in
+        let tl = List.map (fun x -> add_type_ x SITE_NORMAL) tl in
+        head::tl
+       (* let sites_rev = List.rev sites in
+        let head = List.hd sites_rev in     
+        let head = add_type head t in
+        let tl = List.tl sites_rev in
+        let tl = List.map (fun x -> add_type x SITE_NORMAL) tl in
+        List.rev (head::tl)*)
+
+    type tree_node = {
+        site : site*site_type;
+        mutable leafs : tree_node list;
+    }
 
     let number_bbs=ref 0
 
@@ -64,14 +90,77 @@ struct
     let current_call = ref 0
     
     let saved_values = ref [] 
-   
+  
+    (* bb_ori, bb_dst, ori_n, dst_n *) 
     let saved_call = ref [] 
     
     (* Hashtbl that contains result 
      * form :
-     *  (id,size)  *   free sites  * malloc site * use sites 
+     *  (id,size)  *   free sites  * malloc site * use sites
+     * key is chunk * free site, because from a same malloc, different free that lead to different uaf 
      * *)
-    let sg_uaf = ((Hashtbl.create 100) : (( (int*int) * ((site list) list)   , (site list) *   ((site list) list) ) Hashtbl.t )) ;;
+    let sg_uaf = ((Hashtbl.create 100) : (( (int*int) * (((site*site_type) list) list)   , ((site*site_type) list) *   (((site*site_type) list) list) ) Hashtbl.t )) ;;
+
+    let print_site(((addr,it),f,n),t) = Printf.sprintf "%x,%d %s %d" (addr/0x100) it f n
+
+    let uaf_to_tree (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
+        (* convert a list of site to a tree (linear) *) 
+        let site_to_tree sites = 
+            let leaf = { site = List.hd sites ; leafs = [] } in
+            let _ = List.fold_left (fun res x ->
+                let new_leaf = {site = x; leafs = [] } in
+                let () = res.leafs <- [new_leaf] in
+                new_leaf
+            ) leaf (List.tl sites) in
+            leaf 
+        in
+        (* Add a sites in tree *)
+        let rec add_sites_to_tree leaf s sites = 
+            try
+                let next_leaf = 
+                    if (s=leaf.site) then leaf
+                    else
+                        List.find (fun x -> x.site = s  ) leaf.leafs 
+                  in
+                    add_sites_to_tree next_leaf (List.hd sites) (List.tl sites)
+            with
+                Not_found -> 
+                    leaf.leafs <- leaf.leafs@[(site_to_tree(s::sites))] (* add in the end -> alloc first in dot files *)
+        in    
+        let first_tree = site_to_tree alloc in
+        let () = List.iter (fun x -> add_sites_to_tree first_tree (List.hd x) (List.tl x)) free in
+        let () = Printf.printf "add use\n" in
+        let () = List.iter (fun x -> add_sites_to_tree first_tree (List.hd x) (List.tl x)) use in
+        first_tree
+
+    let print_node_dot oc (((addr,it),f,n),t) =
+        match t with
+        | SITE_NORMAL -> Printf.fprintf oc "%d%d%d[label=\"0x%x:%d call %s\"]\n"  n (addr/0x100) it (addr/0x100) it f
+        | SITE_ALLOC -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d alloc\", style=filled,shape=\"box\", fillcolor=\"turquoise\"]\n" n (addr/0x100) it f (addr/0x100) it
+        | SITE_FREE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (addr/0x100) it f (addr/0x100) it
+        | SITE_USE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
+        
+    let print_arc_dot oc (((addr,it),f,n),t) leafs =
+        List.iter (fun (((addr_,it_),f_,n_),t_) -> 
+            Printf.fprintf oc "%d%d%d -> %d%d%d\n" n (addr/0x100) it n_ (addr_/0x100) it_ 
+        ) leafs  
+     
+    let export_call_graph_uaf filename print_node print_arc (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
+        let oc = open_out filename in 
+        let _ = Printf.fprintf oc "strict digraph g {\n" in
+        let () = Printf.printf "Export %s\n" filename in
+        let alloc = List.rev alloc in
+        let free = List.map (fun x -> List.rev x) free in 
+        let use = List.map (fun x -> List.rev x) use in 
+        let tree = uaf_to_tree alloc free use in
+        let rec explore leaf =
+            let () = print_node oc leaf.site in
+            let () = print_arc oc leaf.site (List.map (fun x -> x.site ) leaf.leafs) in
+            List.iter (fun x -> explore x) leaf.leafs 
+        in
+        let _ = explore tree  in
+        let _ = Printf.fprintf oc "}\n" in
+        close_out oc
 
     (* 
      * pretty print for sg_uaf
@@ -107,8 +196,14 @@ struct
     (*
      * print to dot format
      *)
-    let print_uaf_dot filename alloc free use = 
+    let print_uaf_dot filename alloc free use =
+  (*      let filename2 = filename^"-new.dot" in
+        let () = export_call_graph_uaf filename2 print_node_dot print_arc_dot alloc free use in*)
         let oc = open_out filename in
+        let remove_type (a,b) = a in
+        let alloc = List.map remove_type alloc in
+        let free = List.map (fun x -> List.map remove_type x) free in
+        let use = List.map (fun x -> List.map remove_type x) use in
         let alloc = add_p ( alloc) in
         let free = List.map (fun x -> add_p ( x)) free in
         let use = List.map (fun x -> add_p ( x)) use in
@@ -124,6 +219,7 @@ struct
         let _ = Printf.fprintf oc "%s\n" (pp_use (List.map ( fun x ->(List.hd x (*(List.length x)-1*)) ) use)) in
         let _ = Printf.fprintf oc "}\n" in
         close_out oc
+    
 
     let print_uaf_values oc values calls chunk_id chunk_type alloc free use =
         let check bb addr it =
@@ -268,7 +364,7 @@ struct
         with Not_found -> Printf.printf "Error, node not found during subgraph extraction\n"
 
     let print_values dir values calls =
-        let txt = Printf.sprintf "strict digraph g {\n" in
+ (*       let txt = Printf.sprintf "strict digraph g {\n" in
         let pp_val_bb bb = Printf.sprintf "0x%x" bb.addr_bb in
         let pp_val_node n = Printf.sprintf "0x%x" n.addr in
         let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( (site list *  ((site list) list) * ((site list) list)) ) list ) Hashtbl.t ))  in
@@ -362,7 +458,9 @@ struct
                         close_out oc
                 ) elems
         ) sg_uaf_by_alloc 
-        
+        *)
+    ()
+
     let print_graph_dot dir values calls =
         let txt = Printf.sprintf "strict digraph g {\n" in
         let pp_val_bb bb = Printf.sprintf "0x%x" bb.addr_bb in
@@ -441,7 +539,7 @@ struct
         with
             _ -> ()
         in
-        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( (site list *  ((site list) list) * ((site list) list)) ) list ) Hashtbl.t ))  in
+        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( ((site*site_type) list *  (((site*site_type) list) list) * (((site*site_type) list) list)) ) list ) Hashtbl.t ))  in
         (* first ordone result by alloc, not by free *)
         let _ =
             Hashtbl.iter 
@@ -466,17 +564,21 @@ struct
                 in
                 let n = ref 0 in
                 let _ = List.iter (fun (alloc,free,use) -> print_uaf_dot (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  alloc free use ) elems in
-                let _ = Printf.printf "%s%d is an uaf :\n" str chunk_id in
+                ()
+           (*     let _ = Printf.printf "%s%d is an uaf :\n" str chunk_id in
                 let _ = List.iter (fun (alloc,free,use) ->
                     let alloc_str=Absenv_v.pp_state alloc in
                     let free_str=List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" free in  
                     let use_str= List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" use in    
                     Printf.printf "Allocated in \n\t%s\nfreed in \n\t%s\nused in \n\t%s\n--------------------------------------\n"        
                     alloc_str free_str use_str ) elems in
-                Printf.printf "#################################\n" 
+                Printf.printf "#################################\n" *)
             ) sg_uaf_by_alloc ;;
 
+
     let print_sg_exp dir_output  =
+    ()
+    (*
         if (Hashtbl.length sg_uaf) == 0 then ()
         else
         let () =
@@ -519,6 +621,7 @@ struct
                     alloc_str free_str use_str ) elems in
                 Printf.printf "#################################\n" 
             ) sg_uaf_by_alloc ;;
+    *)
 
     let print_sg_details sg values dir_output = 
         if (Hashtbl.length sg) == 0 then ()
@@ -1223,8 +1326,9 @@ struct
     let print_time()= Printf.sprintf "%d:%d:%d:%d" ((int_of_float (Sys.time()*.100.))/(60*60*60))  ((mod) ((int_of_float (Sys.time()*.100.))/(60*60)) 60)  ((mod) ((int_of_float (Sys.time()*.100.))/60) 60 ) ((mod) (int_of_float (Sys.time()*.100.)) 60);;
    
     (** Uaf structure manipulation **)
- 
+
     let add_uaf c state =
+        let state = List.map (fun x -> add_type x SITE_USE) state in
         let filter_list l1 l2 =
             let l1_minus_l2 =
             List.fold_left (
@@ -1236,8 +1340,9 @@ struct
             l1_minus_l2@l2
         in
         let c_alloc,c_free = Absenv_v.get_chunk_states c in
+        let c_alloc = add_type c_alloc SITE_ALLOC in
+        let c_free = List.map (fun x -> add_type x SITE_FREE) c_free in
         let key = Absenv_v.get_chunk_key c,c_free in
-        let a,b = key in
         try
             let alloc,use=Hashtbl.find sg_uaf key in
             let use = filter_list use state in

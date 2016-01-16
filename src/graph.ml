@@ -1635,7 +1635,7 @@ struct
     let print_bbt_dot oc (bb,t) f n=
         let addr = bb.addr_bb in
         match t with
-        | SITE_NORMAL -> Printf.fprintf oc "%d%d[label=\"0x%x call %s\", type=\"normal\"]\n"  n (addr/0x100) (addr/0x100) f
+        | SITE_NORMAL -> Printf.fprintf oc "%d%d[label=\"0x%x \", type=\"normal\"]\n"  n (addr/0x100) (addr/0x100)
         | SITE_ALLOC -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x alloc\", type=\"alloc\", style=filled,shape=\"box\", fillcolor=\"turquoise\"]\n" n (addr/0x100)  f (addr/0x100) 
         | SITE_FREE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x free\", type=\"free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (addr/0x100)  f (addr/0x100) 
         | SITE_USE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100)  f (addr/0x100) 
@@ -1671,6 +1671,11 @@ struct
     let print_end_gml oc =
          Printf.fprintf oc "]\n"
  
+    let print_group oc bbst n =
+        let () = Printf.fprintf oc "Subgraph cluster_%d\n {" n in
+        let () = List.iter (fun (bb,_) -> Printf.fprintf oc "%d%d\n" n (bb.addr_bb/0x100)) bbst in
+        Printf.fprintf oc "}\n"
+    
     let export_call_graph_uaf filename print_begin print_end print_node print_arc (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
         let oc = open_out filename in 
         let _ = print_begin oc in
@@ -1762,6 +1767,8 @@ struct
         let list_arc = add_call_ori_dst list_arcs calls in
         list_arc
 
+        
+
     let export_flow_graph_uaf filename print_begin print_end print_node print_arc alloc free use eip calls funcs ret =
         let oc = open_out filename in 
         let _ = print_begin oc in
@@ -1773,6 +1780,7 @@ struct
         let list_func = update_type list_func (alloc::(free@use)) in
         let list_arcs = List.concat (List.map (fun (eip,bbst,name,n) -> create_arc_bbs bbst n ) list_func) in
         let list_arcs = update_arcs list_arcs calls ret in
+        let () = List.iter (fun (_,bbst,_,n) -> print_group oc bbst n) list_func in
         let () = List.iter (fun (eip,bbst,name,n) -> List.iter (fun x ->  print_node oc x name n ) bbst ) list_func in
         let () = List.iter (fun x -> print_arc oc x) list_arcs in
         let () = print_end oc  in

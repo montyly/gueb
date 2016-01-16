@@ -2,6 +2,7 @@ open Absenv;;
 open Ir ;;
 open Unix;;
 open Stubfunc;;
+open Program_piqi;;
 
 (*
  * Debug fonction
@@ -94,6 +95,9 @@ struct
     (* bb_ori, bb_dst, ori_n, dst_n *) 
     let saved_call = ref [] 
     
+    (* bb_ori, bb_dst, ori_n, dst_n *)     
+    let saved_ret_call = ref [] 
+
     (* Hashtbl that contains result 
      * form :
      *  (id,size)  *   free sites  * malloc site * use sites
@@ -101,66 +105,7 @@ struct
      * *)
     let sg_uaf = ((Hashtbl.create 100) : (( (int*int) * (((site*site_type) list) list)   , ((site*site_type) list) *   (((site*site_type) list) list) ) Hashtbl.t )) ;;
 
-    let print_site(((addr,it),f,n),t) = Printf.sprintf "%x,%d %s %d" (addr/0x100) it f n
 
-    let uaf_to_tree (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
-        (* convert a list of site to a tree (linear) *) 
-        let site_to_tree sites = 
-            let leaf = { site = List.hd sites ; leafs = [] } in
-            let _ = List.fold_left (fun res x ->
-                let new_leaf = {site = x; leafs = [] } in
-                let () = res.leafs <- [new_leaf] in
-                new_leaf
-            ) leaf (List.tl sites) in
-            leaf 
-        in
-        (* Add a sites in tree *)
-        let rec add_sites_to_tree leaf s sites = 
-            try
-                let next_leaf = 
-                    if (s=leaf.site) then leaf
-                    else
-                        List.find (fun x -> x.site = s  ) leaf.leafs 
-                  in
-                    add_sites_to_tree next_leaf (List.hd sites) (List.tl sites)
-            with
-                Not_found -> 
-                    leaf.leafs <- leaf.leafs@[(site_to_tree(s::sites))] (* add in the end -> alloc first in dot files *)
-        in    
-        let first_tree = site_to_tree alloc in
-        let () = List.iter (fun x -> add_sites_to_tree first_tree (List.hd x) (List.tl x)) free in
-        let () = Printf.printf "add use\n" in
-        let () = List.iter (fun x -> add_sites_to_tree first_tree (List.hd x) (List.tl x)) use in
-        first_tree
-
-    let print_node_dot oc (((addr,it),f,n),t) =
-        match t with
-        | SITE_NORMAL -> Printf.fprintf oc "%d%d%d[label=\"0x%x:%d call %s\"]\n"  n (addr/0x100) it (addr/0x100) it f
-        | SITE_ALLOC -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d alloc\", style=filled,shape=\"box\", fillcolor=\"turquoise\"]\n" n (addr/0x100) it f (addr/0x100) it
-        | SITE_FREE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (addr/0x100) it f (addr/0x100) it
-        | SITE_USE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
-        
-    let print_arc_dot oc (((addr,it),f,n),t) leafs =
-        List.iter (fun (((addr_,it_),f_,n_),t_) -> 
-            Printf.fprintf oc "%d%d%d -> %d%d%d\n" n (addr/0x100) it n_ (addr_/0x100) it_ 
-        ) leafs  
-     
-    let export_call_graph_uaf filename print_node print_arc (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
-        let oc = open_out filename in 
-        let _ = Printf.fprintf oc "strict digraph g {\n" in
-        let () = Printf.printf "Export %s\n" filename in
-        let alloc = List.rev alloc in
-        let free = List.map (fun x -> List.rev x) free in 
-        let use = List.map (fun x -> List.rev x) use in 
-        let tree = uaf_to_tree alloc free use in
-        let rec explore leaf =
-            let () = print_node oc leaf.site in
-            let () = print_arc oc leaf.site (List.map (fun x -> x.site ) leaf.leafs) in
-            List.iter (fun x -> explore x) leaf.leafs 
-        in
-        let _ = explore tree  in
-        let _ = Printf.fprintf oc "}\n" in
-        close_out oc
 
     (* 
      * pretty print for sg_uaf
@@ -197,8 +142,8 @@ struct
      * print to dot format
      *)
     let print_uaf_dot filename alloc free use =
-        let filename2 = filename^"-new.dot" in
-        let () = export_call_graph_uaf filename2 print_node_dot print_arc_dot alloc free use in
+  (*      let filename2 = filename^"-new.dot" in
+        let () = export_call_graph_uaf filename2 print_site_dot print_site_arc_dot alloc free use in*)
         let oc = open_out filename in
         let remove_type (a,b) = a in
         let alloc = List.map remove_type alloc in
@@ -529,51 +474,6 @@ struct
                 print_uaf_values "/tmp/test" (!saved_values) (!saved_call) chunk_id chunk_type alloc free use
         ) sg_uaf
 *)
-
-    let print_sg dir_output  =
-        if (Hashtbl.length sg_uaf) == 0 then ()
-        else
-        let () =
-        try 
-            Unix.mkdir dir_output 0o777 
-        with
-            _ -> ()
-        in
-        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( ((site*site_type) list *  (((site*site_type) list) list) * (((site*site_type) list) list)) ) list ) Hashtbl.t ))  in
-        (* first ordone result by alloc, not by free *)
-        let _ =
-            Hashtbl.iter 
-                (fun ((chunk_id,chunk_type),free) (alloc,use) ->
-                    let key = chunk_id,chunk_type in
-                    try
-                        let elems=Hashtbl.find sg_uaf_by_alloc key in
-                        Hashtbl.replace sg_uaf_by_alloc key ((alloc,free,use)::elems)
-                    with
-                    Not_found -> Hashtbl.add sg_uaf_by_alloc key [alloc,free,use]
-                ) sg_uaf in
-        let _ = Printf.printf "Results, uaf found : \n\n" in
-        Hashtbl.iter 
-            (fun (chunk_id,chunk_type) elems -> 
-                let str =       
-                begin 
-                    match chunk_type with
-                    | 0 -> "chunk"
-                    | 1 -> "init_val"
-                    | _ -> "unknow"
-                end
-                in
-                let n = ref 0 in
-                let _ = List.iter (fun (alloc,free,use) -> print_uaf_dot (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  alloc free use ) elems in
-                ()
-           (*     let _ = Printf.printf "%s%d is an uaf :\n" str chunk_id in
-                let _ = List.iter (fun (alloc,free,use) ->
-                    let alloc_str=Absenv_v.pp_state alloc in
-                    let free_str=List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" free in  
-                    let use_str= List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" use in    
-                    Printf.printf "Allocated in \n\t%s\nfreed in \n\t%s\nused in \n\t%s\n--------------------------------------\n"        
-                    alloc_str free_str use_str ) elems in
-                Printf.printf "#################################\n" *)
-            ) sg_uaf_by_alloc ;;
 
 
     let print_sg_exp dir_output  =
@@ -1119,6 +1019,31 @@ struct
     
     let find_nodes_from_addr list_addr list_nodes =List.map (fun x -> new_node x  ) (List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes );;
     
+    let parse_protobuf_no_unloop func =
+        let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
+        let connexion=List.filter (fun (x,y) -> x!=y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
+        let bb_nodes = List.map (fun x -> let (addr,list_nodes)=x in (create_bb addr,list_nodes)) bbs in
+        let bbs_only=List.map (fun x-> let (a,b)=x in a)  bb_nodes in
+        let bbs_connect= connect_bbs bbs_only connexion in
+        let eip=find_eip bbs_connect eip_addr in
+        let f addr l = 
+            let (bb_ret,list_ret) = List.find (fun x -> let (a,b)=x in a.addr_bb==addr) l 
+            in list_ret
+        in
+        let bbs_with_nodes_list=List.map (fun x -> (x,f x.addr_bb bb_nodes)) bbs_connect in
+        let nodes_begin=(List.map create_nodes nodes) in
+        let bbs=List.map (
+            fun x-> 
+                let (bb,list_nodes)=x in
+                let () = bb.nodes<- (find_nodes_from_addr list_nodes nodes_begin) in bb
+            ) bbs_with_nodes_list in
+        let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in
+        let () = begin_eip eip in
+        let () = update_call_retn nodes call_retn in
+(*        let () = update_malloc_free_protobuf nodes  in*)
+        (eip,bbs,func.name);;
+ 
+
     let parse_protobuf_number func number_unloop  =
         let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
         let connexion=List.filter (fun (x,y) -> x!=y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
@@ -1377,10 +1302,18 @@ struct
         let func =(List.find (fun (x:Program_piqi.function_) -> x.name = func_name) list_func) in 
         parse_protobuf func 
     
+    let find_func_name_no_unloop func_name list_func  =
+        let func =(List.find (fun (x:Program_piqi.function_) -> x.name = func_name) list_func) in 
+        parse_protobuf_no_unloop func 
+
     let find_func_eip func_eip list_func =
         let func = List.find (fun (x:Program_piqi.function_) -> ( ((Int64.to_int x.addr_to_call)/0x100) = func_eip)) list_func in   
         parse_protobuf func 
     
+    let find_func_eip_no_unloop func_eip list_func =
+        let func = List.find (fun (x:Program_piqi.function_) -> ( ((Int64.to_int x.addr_to_call)/0x100)  = func_eip)) list_func in   
+        parse_protobuf_no_unloop func 
+
     (* If you ignore a call, put TOP in eax *) 
     let ignore_call vsa n state = Absenv_v.set_value_string vsa "eax" (Absenv_v.top_value()) 
    
@@ -1395,7 +1328,7 @@ struct
     
     let visit_after bb = ()
     
-    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free details_values  =
+    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free details_values addr_caller n_caller =
         let score_childs=ref false in
         let rec merge_father fathers m=
             match fathers with
@@ -1510,7 +1443,7 @@ struct
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = flush Pervasives.stdout in
-                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values in
+                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values bb_ori.addr_bb number_call_prev in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
                                     let () = if(details_values) then current_call:=number_call_prev in
@@ -1589,6 +1522,11 @@ struct
         in
         let _ = value_analysis_rec func_eip in
         let retn_node=List.filter (fun x -> ((land) x.type_node type_NODE_RETN)>0) (List.concat (List.map (fun x -> x.nodes) func_bbs)) in
+        let retn_bb=List.filter (fun bb -> List.exists (fun x-> ((land) x.type_node type_NODE_RETN)>0 ) bb.nodes) func_bbs in
+        let () = 
+            if(details_values && addr_caller != 0) then 
+                List.iter (fun x -> saved_ret_call := (addr_caller, n_caller, x.addr_bb, !current_call)::(!saved_ret_call)) retn_bb
+        in
         match retn_node with
             | [] ->     
                 let leaf_bbs=List.filter (fun x -> (List.length x.sons)==0) func_bbs in
@@ -1654,7 +1592,241 @@ struct
             List.iter explore_rec bb.sons 
         in
         explore_rec func_eip    
-    
+
+
+    let print_site(((addr,it),f,n),t) = Printf.sprintf "%x,%d %s %d" (addr/0x100) it f n
+
+    let uaf_to_tree (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
+        (* convert a list of site to a tree (linear) *) 
+        let site_to_tree sites = 
+            let leaf = { site = List.hd sites ; leafs = [] } in
+            let _ = List.fold_left (fun res x ->
+                let new_leaf = {site = x; leafs = [] } in
+                let () = res.leafs <- [new_leaf] in
+                new_leaf
+            ) leaf (List.tl sites) in
+            leaf 
+        in
+        (* Add a sites in tree *)
+        let rec add_sites_to_tree leaf s sites = 
+            try
+                let next_leaf = 
+                    if (s=leaf.site) then leaf
+                    else
+                        List.find (fun x -> x.site = s  ) leaf.leafs 
+                  in
+                    add_sites_to_tree next_leaf (List.hd sites) (List.tl sites)
+            with
+                Not_found -> 
+                    leaf.leafs <- leaf.leafs@[(site_to_tree(s::sites))] (* add in the end -> alloc first in dot files *)
+        in    
+        let first_tree = site_to_tree alloc in
+        let () = List.iter (fun x -> add_sites_to_tree first_tree (List.hd x) (List.tl x)) free in
+        let () = List.iter (fun x -> add_sites_to_tree first_tree (List.hd x) (List.tl x)) use in
+        first_tree
+
+    let print_site_dot oc (((addr,it),f,n),t) =
+        match t with
+        | SITE_NORMAL -> Printf.fprintf oc "%d%d%d[label=\"0x%x:%d call %s\", type=\"normal\"]\n"  n (addr/0x100) it (addr/0x100) it f
+        | SITE_ALLOC -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d alloc\", type=\"alloc\" , style=filled,shape=\"box\", fillcolor=\"turquoise\"]\n" n (addr/0x100) it f (addr/0x100) it
+        | SITE_FREE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d free\", type=\"free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (addr/0x100) it f (addr/0x100) it
+        | SITE_USE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
+
+    let print_bbt_dot oc (bb,t) f n=
+        let addr = bb.addr_bb in
+        match t with
+        | SITE_NORMAL -> Printf.fprintf oc "%d%d[label=\"0x%x call %s\", type=\"normal\"]\n"  n (addr/0x100) (addr/0x100) f
+        | SITE_ALLOC -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x alloc\", type=\"alloc\", style=filled,shape=\"box\", fillcolor=\"turquoise\"]\n" n (addr/0x100)  f (addr/0x100) 
+        | SITE_FREE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x free\", type=\"free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (addr/0x100)  f (addr/0x100) 
+        | SITE_USE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100)  f (addr/0x100) 
+
+    let print_bbt_gml oc (bb,t) f n=
+        let addr = bb.addr_bb in
+        match t with
+        | SITE_NORMAL -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"normal\" \n]\n" n (addr/0x100) (addr/0x100)
+        | SITE_ALLOC -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"alloc\" \n]\n" n (addr/0x100) (addr/0x100)
+        | SITE_FREE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"free\" \n]\n" n (addr/0x100) (addr/0x100)  
+        | SITE_USE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"use\" \n]\n" n (addr/0x100) (addr/0x100)  
+
+    let print_site_arc_dot oc (((addr,it),f,n),t) leafs =
+        List.iter (fun (((addr_,it_),f_,n_),t_) -> 
+            Printf.fprintf oc "%d%d%d -> %d%d%d\n" n (addr/0x100) it n_ (addr_/0x100) it_ 
+        ) leafs  
+
+    let print_bbt_arc_dot oc (ori_addr,ori_n,dst_addr,dst_n) =
+        Printf.fprintf oc "%d%d -> %d%d\n" ori_n (ori_addr/0x100) dst_n (dst_addr/0x100) 
+
+    let print_bbt_arc_gml oc (ori_addr,ori_n,dst_addr,dst_n) =
+        Printf.fprintf oc "edge [ \n source %d%d \n target %d%d\n]\n" ori_n (ori_addr/0x100) dst_n (dst_addr/0x100) 
+
+    let print_begin_dot oc =
+        Printf.fprintf oc "strict digraph g {\n"
+
+    let print_end_dot oc =
+         Printf.fprintf oc "}\n"
+ 
+    let print_begin_gml oc =
+        Printf.fprintf oc "graph [ \nversion 2\ndirected 1\n"
+
+    let print_end_gml oc =
+         Printf.fprintf oc "]\n"
+ 
+    let export_call_graph_uaf filename print_begin print_end print_node print_arc (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
+        let oc = open_out filename in 
+        let _ = print_begin oc in
+        let () = Printf.printf "Export %s\n" filename in
+        let alloc = List.rev alloc in
+        let free = List.map (fun x -> List.rev x) free in 
+        let use = List.map (fun x -> List.rev x) use in 
+        let tree = uaf_to_tree alloc free use in
+        let rec explore leaf =
+            let () = print_node oc leaf.site in
+            let () = print_arc oc leaf.site (List.map (fun x -> x.site ) leaf.leafs) in
+            List.iter (fun x -> explore x) leaf.leafs 
+        in
+        let _ = explore tree  in
+        let () = print_end oc  in
+        close_out oc
+
+    (* tree uaf, funcs (eip,bbs,name) -> funcs as (eip,(bb, typebbs) list,name,n) *)
+    let tree_to_list_func tree funcs =
+        let add_type addr t x = 
+            if (List.exists (fun y -> y.addr = addr ) x.nodes) then (x,t) 
+            else (x,SITE_NORMAL) in
+        let ret = ref [] in
+        let rec explore l =
+            let (((addr,_),f,n),t) = l.site in
+            match t with
+            | SITE_NORMAL -> List.iter explore l.leafs
+            | SITE_USE ->
+                let func = find_func_name_no_unloop f funcs in
+                let func_convert (eip,bbs,name) = (eip,List.map (fun x -> add_type addr t x) bbs, name,n)  in
+                let func =  (func_convert func) in
+                ret := (func)::(!ret)
+            | _ -> ()
+                
+        in
+        let () = explore tree in
+        !ret
+
+    let callgraph_to_list eip calls funcs =
+        let funcs_called = List.map (fun (_,eip,_,n) -> (eip.addr_bb/0x100,n) ) calls in
+        let func_convert (eip,bbs,name) n = (eip,List.map (fun x ->x, SITE_NORMAL ) bbs, name,n)  in
+        List.map (fun (eip,n) -> func_convert (find_func_eip_no_unloop eip funcs) n) ((eip,0)::funcs_called)
+        
+        
+
+    let create_arc_bbs bbst n = 
+        let bbs = List.map (fun (bb,t) -> bb) bbst in
+        let first_bb = List.hd bbs in
+        let bbs = List.tl bbs in
+        let ret = ref [] in
+        let () = List.iter (fun x ->
+                    List.iter (fun y ->
+                        ret := (x.addr_bb,n,y.addr_bb,n)::(!ret)
+                    ) x.sons
+        ) bbs in
+        !ret
+            
+    let update_type list_func sites =
+        let update (eip,bbst,name,n) =
+            let bbst = List.map (fun (bb,t) ->
+                try
+                    let ((_,_,_),t_) = List.find ( fun (((y,_),_,n_),t_) ->
+                        List.exists (fun x -> x.addr = y && n = n_) bb.nodes
+                    ) sites
+                    in
+                    (bb,t_)
+                with
+                    _ -> (bb,t)
+            ) bbst in
+            (eip,bbst,name,n)
+        in 
+        List.map update list_func
+
+    let update_arcs list_arcs calls ret =
+        let udpate_call_ori_sons_to_ret l r = 
+(*            List.filter (fun (ori_addr, ori_n, dst_addr, dst_n) -> not (List.exists (fun (ori_ret, ori_ret_n, ret_addr,ret_n) -> ori_addr = ori_ret && ori_n = ori_ret_n) r) ) l*)
+            List.map (fun (ori_addr, ori_n, dst_addr, dst_n) -> 
+                        try 
+                            let (_,_,ret_addr,ret_n) = List.find (fun (ori_ret, ori_ret_n, ret_addr,ret_n) -> ori_addr/0x100 = ori_ret/0x100 && ori_n = ori_ret_n) r in
+                            (ret_addr,ret_n,dst_addr,dst_n)
+                        with Not_found -> (ori_addr, ori_n, dst_addr, dst_n)
+            ) l
+        in
+        let add_call_ori_dst l c = 
+            l@(List.map (fun (bb_ori,bb_dst,n_ori,n_dst) -> (bb_ori.addr_bb,n_ori,bb_dst.addr_bb,n_dst) ) c)
+        in
+        let () = List.iter (fun (ori_ret, ori_ret_n, ret_addr,ret_n) -> Printf.printf "From %x %x To %x %x\n" (ori_ret/0x100) ori_ret_n (ret_addr/0x100) ret_n ) ret in 
+        let list_arcs = udpate_call_ori_sons_to_ret list_arcs ret in
+        let list_arc = add_call_ori_dst list_arcs calls in
+        list_arc
+
+    let export_flow_graph_uaf filename print_begin print_end print_node print_arc alloc free use eip calls funcs ret =
+        let oc = open_out filename in 
+        let _ = print_begin oc in
+        let () = Printf.printf "Export %s\n" filename in
+        let alloc = List.hd (alloc) in
+        let free = List.map (fun x -> List.hd ( x)) free in 
+        let use = List.map (fun x -> List.hd (x)) use in 
+        let list_func = callgraph_to_list eip calls funcs in
+        let list_func = update_type list_func (alloc::(free@use)) in
+        let list_arcs = List.concat (List.map (fun (eip,bbst,name,n) -> create_arc_bbs bbst n ) list_func) in
+        let list_arcs = update_arcs list_arcs calls ret in
+        let () = List.iter (fun (eip,bbst,name,n) -> List.iter (fun x ->  print_node oc x name n ) bbst ) list_func in
+        let () = List.iter (fun x -> print_arc oc x) list_arcs in
+        let () = print_end oc  in
+        close_out oc  
+
+    let print_sg dir_output eip calls list_funcs ret =
+        if (Hashtbl.length sg_uaf) == 0 then ()
+        else
+        let () =
+        try 
+            Unix.mkdir dir_output 0o777 
+        with
+            _ -> ()
+        in
+        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( ((site*site_type) list *  (((site*site_type) list) list) * (((site*site_type) list) list)) ) list ) Hashtbl.t ))  in
+        (* first ordone result by alloc, not by free *)
+        let _ =
+            Hashtbl.iter 
+                (fun ((chunk_id,chunk_type),free) (alloc,use) ->
+                    let key = chunk_id,chunk_type in
+                    try
+                        let elems=Hashtbl.find sg_uaf_by_alloc key in
+                        Hashtbl.replace sg_uaf_by_alloc key ((alloc,free,use)::elems)
+                    with
+                    Not_found -> Hashtbl.add sg_uaf_by_alloc key [alloc,free,use]
+                ) sg_uaf in
+        let _ = Printf.printf "Results, uaf found : \n\n" in
+        Hashtbl.iter 
+            (fun (chunk_id,chunk_type) elems -> 
+                let str =       
+                begin 
+                    match chunk_type with
+                    | 0 -> "chunk"
+                    | 1 -> "init_val"
+                    | _ -> "unknow"
+                end
+                in
+                let n = ref 0 in
+                let _ = List.iter (fun (alloc,free,use) -> export_call_graph_uaf (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  print_begin_dot print_end_dot print_site_dot print_site_arc_dot alloc free use ) elems in
+                let _ = List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d-details.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot  alloc free use eip calls list_funcs ret ) elems in
+                let _ = List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d-details.gml" dir_output str chunk_id !n) print_begin_gml print_end_gml print_bbt_gml print_bbt_arc_gml  alloc free use eip calls list_funcs ret ) elems in
+                ()
+           (*     let _ = Printf.printf "%s%d is an uaf :\n" str chunk_id in
+                let _ = List.iter (fun (alloc,free,use) ->
+                    let alloc_str=Absenv_v.pp_state alloc in
+                    let free_str=List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" free in  
+                    let use_str= List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" use in    
+                    Printf.printf "Allocated in \n\t%s\nfreed in \n\t%s\nused in \n\t%s\n--------------------------------------\n"        
+                    alloc_str free_str use_str ) elems in
+                Printf.printf "#################################\n" *)
+            ) sg_uaf_by_alloc ;;
+
+
+ 
     let launch_supercallgraph_analysis func_name list_funcs list_malloc list_free dir_output verbose show_call print_graph =
         let count = ref 10 in
         try 
@@ -1686,9 +1858,9 @@ struct
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs in
             let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
-            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free details_values in
+            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free details_values 0 0 in
             let _ = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
-            let () = if(merge_output) then print_sg_exp dir_output else print_sg dir_output 
+            let () = if(merge_output) then print_sg_exp dir_output else print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call)
             in
             if(details_values)
                 then print_values dir_output (!saved_values) (!saved_call) 

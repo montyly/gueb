@@ -197,8 +197,8 @@ struct
      * print to dot format
      *)
     let print_uaf_dot filename alloc free use =
-  (*      let filename2 = filename^"-new.dot" in
-        let () = export_call_graph_uaf filename2 print_node_dot print_arc_dot alloc free use in*)
+        let filename2 = filename^"-new.dot" in
+        let () = export_call_graph_uaf filename2 print_node_dot print_arc_dot alloc free use in
         let oc = open_out filename in
         let remove_type (a,b) = a in
         let alloc = List.map remove_type alloc in
@@ -492,7 +492,7 @@ struct
         let find_leafs n = 
             let nodes = Hashtbl.find tbl n in
             let leafs = List.find_all (fun x -> List.length x.sons == 0) nodes in
-            let is_loop n = List.exists (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop != x.unloop)) nodes in
+            let is_loop n = List.exists (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop != n.unloop)) nodes in
             List.filter (fun x -> not (is_loop x)) leafs 
         in
         let txt = List.fold_left (
@@ -1036,7 +1036,7 @@ struct
     let print_addr l = (String.concat " " (List.map (fun x -> Printf.sprintf "0x%x:%d (%d)" x.addr_bb x.unloop x.uniq_id) l))  
     
     let find_node n nodes n_diff = 
-            try List.find (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop=x.unloop+n_diff)) nodes
+            try List.find (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop=n.unloop+n_diff)) nodes
             with Not_found -> n 
     
     let find_node_no_unloop n nodes  = 
@@ -1117,7 +1117,7 @@ struct
     with 
       Not_found -> Printf.printf "Eip not found ! \n"
     
-    let find_nodes_from_addr list_addr list_nodes val_unloop=List.map (fun x -> new_node x  ) (List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes );;
+    let find_nodes_from_addr list_addr list_nodes =List.map (fun x -> new_node x  ) (List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes );;
     
     let parse_protobuf_number func number_unloop  =
         let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
@@ -1136,7 +1136,7 @@ struct
         let bbs=List.map (
             fun x-> 
                 let (bb,list_nodes)=x in
-                let () = bb.nodes<- (find_nodes_from_addr list_nodes nodes_begin bb.unloop) in bb
+                let () = bb.nodes<- (find_nodes_from_addr list_nodes nodes_begin) in bb
             ) bbs_with_nodes_list in
         let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in
         let () = begin_eip eip in
@@ -1353,24 +1353,24 @@ struct
     let check_uaf bbs backtrack addr=
 (*        let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in/*)
         List.iter (fun (nodes,unloop) ->
-        let uaf_result=List.map Ir_v.check_uaf (List.map (fun x -> (x.stmt,x.vsa,x.hf,(x.addr,unloop))) nodes) in
-        if (List.length uaf_result)>0 
-        then
-            List.iter (
-                fun x-> match x with
-                    | None -> ()
-                    | Some (stmt,chunks,addr) ->
-                        let _,b,_ = (List.hd backtrack) in
-                        let state = (addr,b,!current_call)::backtrack in
-                        let _ = List.iter (fun c -> add_uaf c [state]) chunks in
-                        Printf.printf "Uaf find :%s\n" ((let a,it = addr in Printf.sprintf "%x:%d " a it )^(Ir_v.print_stmt stmt)^(Absenv_v.pp_he chunks) )
-            ) uaf_result;
-       if (List.exists (
-            fun x -> match x with
-            | None -> false
-            | Some x -> true
-          ) uaf_result) 
-        then Printf.printf "Uaf find in %x Backtrack %s \n ###################################################################\n" addr (String.concat " " (List.map print_backtrack backtrack ))
+         let uaf_result=List.map Ir_v.check_uaf (List.map (fun x -> (x.stmt,x.vsa,x.hf,(x.addr,unloop))) nodes) in
+         if (List.length uaf_result)>0 
+         then
+             List.iter (
+                 fun x-> match x with
+                     | None -> ()
+                     | Some (stmt,chunks,addr) ->
+                         let _,b,_ = (List.hd backtrack) in
+                         let state = (addr,b,!current_call)::backtrack in
+                         let _ = List.iter (fun c -> add_uaf c [state]) chunks in
+                         Printf.printf "Uaf find :%s\n" ((let a,it = addr in Printf.sprintf "%x:%d " a it )^(Ir_v.print_stmt stmt)^(Absenv_v.pp_he chunks) )
+             ) uaf_result;
+        if (List.exists (
+             fun x -> match x with
+             | None -> false
+             | Some x -> true
+           ) uaf_result) 
+         then Printf.printf "Uaf find in %x Backtrack %s \n ###################################################################\n" addr (String.concat " " (List.map print_backtrack backtrack ))
         ) (List.map (fun x -> (x.nodes,x.unloop) ) bbs )
     
     let find_func_name func_name list_func  =

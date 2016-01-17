@@ -84,11 +84,12 @@ You can launch GUEB on all the possible entry point :
 ```
 gueb -reil gnome-nettool -func gnome-nettool-entry-points -output_dir results -type 2
 ```
-- type 2 is used to precise that the analysis will be launch on a set on entry point.
+-type 2 is used to precise that the analysis will be launch on a set on entry point.
+
 GUEB will detect 6 use-afte-free (5 false positives, 1 true positive).
 The real one is located in info_nic_changed :
 <img src="./doc/pics/gnome-nettool1.png" alt="First windows" style="width: 200px;"/>
-From this tree, we can suspect the root of the use-after-free to be located in the function info_get_nic_information.
+From this tree, we can suspect that the root of the use-after-free is located in the function info_get_nic_information.
 We can export the sub-graph of info_get_nic_information leading to the use-after-free with this command :
 ```
 gueb -reil gnome-nettool -func info_get_nic_information -flow-graph-dot
@@ -100,9 +101,9 @@ A second dot file will be created :
 * The green node is the free site
 * The red node is the use site
 * Others nodes in color represent the sub-graph leading to the use-after-free
-* Nodes of the same function are grouped
+* Nodes of the same function are grouped into boxes
 
-You can create a control-flow graph that not include arc between ret of functions and the caller with :
+You can create a representation that not include arc between ret of functions and the caller with :
 ```
 gueb -reil gnome-nettool -func info_get_nic_information -flow-graph-dot -flow-graph-call-disjoint
 ```

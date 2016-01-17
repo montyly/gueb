@@ -109,7 +109,7 @@ let () =
         ("-func", Arg.String (fun x ->  func:=x), "Name of the entry point function, default : main");
         ("-funcs-file", Arg.String (fun x ->  funcs_file:=x), "Name of the files containing all the functions name");
         ("-stub", Arg.String (fun x -> stub_name:=x), "Name of the stub module");
-        ("-type", Arg.Int (fun x -> type_analysis:=x), "\n\t0 : uaf detection (default)\n\t1 : compute callgraph size\n\t2 : uaf detection on a set of functions\n\t3 : compute callgraph size on a set of functions");
+        ("-type", Arg.Int (fun x -> type_analysis:=x), "\n\t0 : uaf detection (default)\n\t1 : compute callgraph size (NOT WORKING on BinNavi 6)\n\t2 : uaf detection on a set of functions\n\t3 : compute callgraph size on a set of functions");
         ("-output_dir", Arg.String (fun x -> dir_output:=x), "Output directory, default /tmp");
     ] in
     let _ =  Arg.parse speclist print_endline "GUEB : Static analyzer\n"  in

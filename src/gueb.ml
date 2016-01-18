@@ -103,7 +103,7 @@ let () =
         ("-merge-output", Arg.Set print_graph, "Merge output values (experimental)");
         ("-details-values", Arg.Set details_values, "Details values computed in RAM");*)
         ("-flow-graph-dot", Arg.Set flow_graph_dot, "Export flow graph (Dot)");
-(*        ("-flow-graph-gml", Arg.Set flow_graph_gml, "Export flow graph (Gml)"); Not yet working *)
+        ("-flow-graph-gml", Arg.Set flow_graph_gml, "Export flow graph (Gml)"); 
         ("-flow-graph-call-disjoint", Arg.Set flow_graph_disjoint, "Export as separate functions");
         ("-reil", Arg.String (fun x -> program:=x), "Name of the REIL file (protobuf), default : reil");
         ("-func", Arg.String (fun x ->  func:=x), "Name of the entry point function, default : main");

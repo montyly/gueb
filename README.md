@@ -95,7 +95,7 @@ We can export the sub-graph of info_get_nic_information leading to the use-after
 gueb -reil gnome-nettool -func info_get_nic_information -flow-graph-dot
 ```
 A second dot file will be created :
-<img src="./doc/pics/gnome-nettool2.png" alt="Second window" style="width: 200px;"/>
+<a href="./doc/pics/gnome-nettool3.png"><img src="./doc/pics/gnome-nettool2-light.png" alt="Second window" style="width: 50px;"/></a>
 * The node orange is the entry point of the first function
 * The blue node is the allocation site
 * The green node is the free site
@@ -107,7 +107,7 @@ You can create a representation that not include arc between ret of functions an
 ```
 gueb -reil gnome-nettool -func info_get_nic_information -flow-graph-dot -flow-graph-call-disjoint
 ```
-<img src="./doc/pics/gnome-nettool3.png" alt="Third window" style="width: 200px;"/>
+<a href="./doc/pics/gnome-nettool3.png"><img src="./doc/pics/gnome-nettool3-light.png" alt="Third window" style="width: 50px;"/></a>
 This representation can be easier to understand.
 
 

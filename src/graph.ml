@@ -1666,42 +1666,53 @@ struct
         | SITE_USE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
         | SITE_DF -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d DF²\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
 
-    let print_bbt_dot oc (bb,t) f n=
-        let addr = bb.addr_bb in
+    let print_bbt_dot oc (bb,t) f n id_node=
+        let addr = bb.addr_bb/0x100 in
+        let id_node_txt = Printf.sprintf "%d%d" n addr in
+        let () = Hashtbl.add id_node (n,addr) id_node_txt in
+        let print_event oc id_node_txt f addr t color = Printf.fprintf oc "%s[label=\"%s -> 0x%x %s\", type=\"%s\", style=filled,shape=\"box\", fillcolor=\"%s\"]\n" id_node_txt f addr f t color in
+        let print oc id_node_txt addr t color = Printf.fprintf oc "%s[label=\"0x%x\", type=\"%s\", style=filled, fillcolor=\"%s\"]\n" id_node_txt addr t color in
         match t with
-        | NODE_OUT -> Printf.fprintf oc "%d%d[label=\"0x%x \", type=\"normal\"]\n"  n (addr/0x100) (addr/0x100)
-        | NODE_ALLOC -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x alloc\", type=\"alloc\", style=filled,shape=\"box\", fillcolor=\"blue\"]\n" n (addr/0x100)  f (addr/0x100) 
-        | NODE_FREE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x free\", type=\"free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (addr/0x100)  f (addr/0x100) 
-        | NODE_USE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100)  f (addr/0x100) 
-        | NODE_DF -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x DF\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100)  f (addr/0x100) 
-        | NODE_EIP -> Printf.fprintf oc "%d%d[label=\"0x%x\",  type=\"eip\",style=filled,fillcolor=orange]\n" n (addr/0x100)  (addr/0x100) 
-        | NODE_EIP_ALLOC -> Printf.fprintf oc "%d%d[label=\"0x%x\",type=\"eipalloc\",style=filled,fillcolor=pink]\n" n (addr/0x100)  (addr/0x100) 
-        | NODE_ALLOC_FREE -> Printf.fprintf oc "%d%d[label=\"0x%x\",type=\"allocfree\",style=filled,fillcolor=aquamarine]\n" n (addr/0x100)  (addr/0x100) 
-        | NODE_FREE_USE -> Printf.fprintf oc "%d%d[label=\"0x%x\",type=\"freeuse\",style=filled,fillcolor=darkolivegreen2]\n" n (addr/0x100)  (addr/0x100) 
+        | NODE_OUT -> Printf.fprintf oc "%s[label=\"0x%x \", type=\"normal\"]\n"  id_node_txt (addr/0x100)
+        | NODE_ALLOC -> print_event oc id_node_txt f addr "alloc" "blue" 
+        | NODE_FREE -> print_event oc id_node_txt f addr "free" "green" 
+        | NODE_USE -> print_event oc id_node_txt f addr "use" "red" 
+        | NODE_DF -> print_event oc id_node_txt f addr "df" "red" 
+        | NODE_EIP -> print oc id_node_txt addr "eip" "orange" 
+        | NODE_EIP_ALLOC -> print oc id_node_txt addr "eipalloc" "pink" 
+        | NODE_ALLOC_FREE -> print oc id_node_txt addr "allocfree" "aquamarine"
+        | NODE_FREE_USE -> print oc id_node_txt addr "freeuse" "darkolivegreen2"  
 
-    let print_bbt_gml oc (bb,t) f n=
-        let addr = bb.addr_bb in
+    let print_bbt_gml oc (bb,t) f n id_node=
+        let addr = bb.addr_bb/0x100 in
+        let id_node_val = (Hashtbl.length id_node) +1 in
+        let () = Hashtbl.add id_node (n,addr) id_node_val in
+        let print oc n id_node_val addr t = Printf.fprintf oc "node [ \n id %d \n addr %d \n call %d \n label \"0x%x\" \n type \"%s\" \n]\n" id_node_val addr n addr t in
         match t with
-        | NODE_OUT -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"normal\" \n]\n" n (addr/0x100) (addr/0x100)
-        | NODE_ALLOC -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"alloc\" \n]\n" n (addr/0x100) (addr/0x100)
-        | NODE_FREE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"free\" \n]\n" n (addr/0x100) (addr/0x100)  
-        | NODE_USE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"use\" \n]\n" n (addr/0x100) (addr/0x100)  
-        | NODE_DF -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"DF\" \n]\n" n (addr/0x100) (addr/0x100)  
-        | NODE_EIP -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"eip\" \n]\n" n (addr/0x100)  (addr/0x100) 
-        | NODE_EIP_ALLOC -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"eipalloc\" \n]\n" n (addr/0x100)  (addr/0x100) 
-        | NODE_ALLOC_FREE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"allocfree\" \n]\n" n (addr/0x100)  (addr/0x100) 
-        | NODE_FREE_USE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"freeuse\" \n]\n" n (addr/0x100)  (addr/0x100) 
+        | NODE_OUT -> print oc n id_node_val addr "normal"
+        | NODE_ALLOC -> print oc n id_node_val addr "alloc"
+        | NODE_FREE ->  print oc n id_node_val addr "free"
+        | NODE_USE -> print oc n id_node_val addr "use"
+        | NODE_DF -> print oc n id_node_val addr "df" 
+        | NODE_EIP -> print oc n id_node_val addr "eip" 
+        | NODE_EIP_ALLOC ->  print oc n id_node_val addr"eipalloc" 
+        | NODE_ALLOC_FREE -> print oc n id_node_val addr "allocfree" 
+        | NODE_FREE_USE -> print oc n id_node_val addr "freeuse" 
 
     let print_site_arc_dot oc (((addr,it),f,n),t) leafs =
         List.iter (fun (((addr_,it_),f_,n_),t_) -> 
             Printf.fprintf oc "%d%d%d -> %d%d%d\n" n (addr/0x100) it n_ (addr_/0x100) it_ 
         ) leafs  
 
-    let print_bbt_arc_dot oc (ori_addr,ori_n,dst_addr,dst_n) =
-        Printf.fprintf oc "%d%d -> %d%d\n" ori_n (ori_addr/0x100) dst_n (dst_addr/0x100) 
+    let print_bbt_arc_dot oc (ori_addr,ori_n,dst_addr,dst_n) id_node =
+        let id_src = Hashtbl.find id_node (ori_n,(ori_addr/0x100)) in
+        let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
+        Printf.fprintf oc "%s -> %s\n" id_src id_dst
 
-    let print_bbt_arc_gml oc (ori_addr,ori_n,dst_addr,dst_n) =
-        Printf.fprintf oc "edge [ \n source %d%d \n target %d%d\n]\n" ori_n (ori_addr/0x100) dst_n (dst_addr/0x100) 
+    let print_bbt_arc_gml oc (ori_addr,ori_n,dst_addr,dst_n) id_node =
+        let id_src = Hashtbl.find id_node (ori_n,(ori_addr/0x100)) in
+        let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
+        Printf.fprintf oc "edge [ \n source %d \n target %d\n]\n" id_src id_dst
 
     let print_begin_dot oc =
         Printf.fprintf oc "strict digraph g {\n"
@@ -1722,17 +1733,6 @@ struct
 
     let print_group_gml oc bbst n = ()
    
-    let print_color_dot oc eip eip_alloc alloc_free free_use =
-        () (*)
-        let () = Printf.fprintf oc "%d%d[style=filled,fillcolor=orange]\n" (snd eip) (fst eip) in
-        let () = List.iter (fun (addr,n) -> Printf.fprintf oc "%d%d[style=filled,fillcolor=cadetblue2]\n" n addr) eip_alloc in
-        let () = List.iter (fun (addr,n) -> Printf.fprintf oc "%d%d[style=filled,fillcolor=aquamarine]\n" n addr) alloc_free in
-        List.iter (fun (addr,n) -> Printf.fprintf oc "%d%d[style=filled,fillcolor=pink]\n" n addr) free_use 
-*)
-
-    let print_color_gml oc eip eip_alloc alloc_free free_use =
-        ()        (* not working in gml format *)
- 
     let export_call_graph_uaf filename print_begin print_end print_node print_arc (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
         let oc = open_out filename in 
         let _ = print_begin oc in
@@ -1886,8 +1886,10 @@ struct
         with
             Not_found -> let () = Printf.printf "Not found ori bb %x %s\n" addr f in (0,0)
 
-    let export_flow_graph_uaf filename print_begin print_end print_node print_arc print_group print_color alloc free use eip calls funcs ret flow_graph_disjoint =
+    let export_flow_graph_uaf filename print_begin print_end print_node print_arc print_group alloc free use eip calls funcs ret flow_graph_disjoint =
         let oc = open_out filename in 
+        (* id_node use as index for exporting, and keeping relations between print node and arcs, addr * n -> id *)
+        let id_node = Hashtbl.create 400 in
         let _ = print_begin oc in
         let () = Printf.printf "Export %s\n" filename in
         let alloc = List.hd (alloc) in
@@ -1915,11 +1917,10 @@ struct
         let list_func = update_type_subgraph list_func (eip,0) (eip_to_alloc) (alloc_to_free) (free_to_use) in
 
         (* For exporting, we compare bb with addr /0x100, because of REIL *) 
-        let compare_bb (bb1,_) (bb2,_) = compare (bb1.addr_bb) (bb2.addr_bb) in
-        let () = print_color oc (eip,0) eip_to_alloc (List.concat alloc_to_free) (List.concat (List.concat free_to_use)) in
+        let compare_bb (bb1,_) (bb2,_) = compare (bb1.addr_bb/0x100) (bb2.addr_bb/0x100) in
         let () = List.iter (fun (_,bbst,_,n) -> print_group oc bbst n) list_func in
-        let () = List.iter (fun (eip,bbst,name,n) -> List.iter (fun x ->  print_node oc x name n ) (List.sort_uniq compare_bb bbst) ) list_func in
-        let () = List.iter (fun x -> print_arc oc x) list_arcs in
+        let () = List.iter (fun (eip,bbst,name,n) -> List.iter (fun x ->  print_node oc x name n id_node ) (List.sort_uniq compare_bb bbst) ) list_func in
+        let () = List.iter (fun x -> print_arc oc x id_node) list_arcs in
         let () = print_end oc  in
         close_out oc  
 
@@ -1956,16 +1957,17 @@ struct
                 end
                 in
                 let n = ref 0 in
-                let _ = List.iter (fun (alloc,free,use) -> export_call_graph_uaf (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  print_begin_dot print_end_dot print_site_dot print_site_arc_dot alloc free use ) elems in
-                let () = if (flow_graph_dot) then   
-                     let () = List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot print_color_dot alloc free use eip calls list_funcs ret false ) elems 
-                    in
-                    if(flow_graph_disjoint) then
-                        List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details-disjoint.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot print_color_dot alloc free use eip calls list_funcs ret true ) elems 
-                in
-                let () = if (flow_graph_gml) then
-                    List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.gml" dir_output str chunk_id !n) print_begin_gml print_end_gml print_bbt_gml print_bbt_arc_gml print_group_gml print_color_gml alloc free use eip calls list_funcs ret false ) elems 
-                in ()
+                List.iter (fun (alloc,free,use) ->
+                        let () = export_call_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  print_begin_dot print_end_dot print_site_dot print_site_arc_dot alloc free use in
+                        let () = if (flow_graph_dot) then   
+                            let () = export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot alloc free use eip calls list_funcs ret false  
+                            in if(flow_graph_disjoint) then
+                                    export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details-disjoint.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot alloc free use eip calls list_funcs ret true 
+                        in
+                        let () = if (flow_graph_gml) then
+                             export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.gml" dir_output str chunk_id !n) print_begin_gml print_end_gml print_bbt_gml print_bbt_arc_gml print_group_gml alloc free use eip calls list_funcs ret false
+                        in n:=!n+1 
+                ) elems
             ) sg_uaf_by_alloc ;;
 
 

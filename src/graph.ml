@@ -1402,16 +1402,15 @@ struct
                     let vsa = Absenv_v.restore_esp n.vsa in
                     n.vsa <- ignore_call vsa number_chunk (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack)
                 | Some a ->
-                    (* If call to malloc , should may be merge this into the stub module *) 
-                    if (List.exists (fun x-> x=a) malloc_addr) then
-                        let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
-                        let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
-                        let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
-                        let () = number_chunk:=!number_chunk+1 in
-                        n.vsa <- Absenv_v.restore_esp n.vsa 
-                    (* If call to free *)
-                    else if (List.exists (fun x-> x=a) free_addr) then
+                    (* If call to free , should may be merge this into the stub module *)
+                    if (List.exists (fun x-> x=a) free_addr) then
                     begin
+                        (* Case of realloc *)
+                        let () = if (List.exists (fun x-> x=a) malloc_addr) then
+                            let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
+                            let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
+                            let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
+                            number_chunk:=!number_chunk+1 in
                         let () = if(verbose) then Printf.printf "Call Free %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack )) in
                         try 
                             let _ =  n.vsa <- Absenv_v.restore_esp n.vsa in
@@ -1442,6 +1441,13 @@ struct
                                      if (verbose) then Printf.printf "Error on free? \n" 
                                 end
                     end
+                    (* If call to malloc *) 
+                    else if (List.exists (fun x-> x=a) malloc_addr) then
+                        let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
+                        let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
+                        let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
+                        let () = number_chunk:=!number_chunk+1 in
+                        n.vsa <- Absenv_v.restore_esp n.vsa 
                     else
                     (* check if stub *)
                     let is_stub, vsa,ha,hf=Stubfunc_v.stub a n.vsa n.ha n.hf number_chunk (n.addr,bb_ori.unloop) func_name (!current_call) backtrack  in

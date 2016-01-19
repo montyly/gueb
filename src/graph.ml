@@ -1361,7 +1361,7 @@ struct
     
     let visit_after bb = ()
     
-    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free details_values addr_caller n_caller flow_graph =
+    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free addr_caller n_caller flow_graph =
         let score_childs=ref false in
         let rec merge_father fathers m=
             match fathers with
@@ -1463,10 +1463,10 @@ struct
                                 let (func_eip,func_bbs)=(func_eip_ori,func_bbs_ori) in
                                 let number_call_prev = (!current_call) in
                                 let () = 
-                                    if(details_values || flow_graph) 
+                                    if(flow_graph) 
                                     then 
                                         let () = number_call:=(!number_call+1) in
-                                        let () = saved_call := (bb_ori,func_eip,(!current_call),(!number_call))::(!saved_call) in 
+                                        let () = saved_call := (bb_ori.addr_bb,func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
                                 let _ = List.iter (fun x -> init_value x (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) func_name) func_bbs in
@@ -1476,10 +1476,10 @@ struct
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = flush Pervasives.stdout in
-                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values bb_ori.addr_bb number_call_prev flow_graph in
+                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb number_call_prev flow_graph in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
-                                    let () = if(details_values || flow_graph) then current_call:=number_call_prev in
+                                    let () = if(flow_graph) then current_call:=number_call_prev in
                                     let _ = score_childs:=(||) (!score_childs) score in
                                     try
                                         let _ = n.vsa<-Absenv_v.filter_esp_ebp vsa verbose in
@@ -1502,7 +1502,7 @@ struct
                                     | NOT_RET (vsa,ha,hf,score)  ->
                                         let _ = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(details_values || flow_graph) then current_call:=number_call_prev in
+                                        let () = if(flow_graph) then current_call:=number_call_prev in
                                         let _ = score_childs:=(||) (!score_childs) score in
                                         let _ = if (verbose) then 
                                             let _ = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n] bb_ori.unloop) in
@@ -1517,7 +1517,7 @@ struct
                                    | NOT_RET_NOT_LEAF ->
                                         let () = if (verbose) then Printf.printf "End call (NOT RET NOT LEAF) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(details_values || flow_graph) then current_call:=number_call_prev in
+                                        let () = if(flow_graph) then current_call:=number_call_prev in
                                         let _ = n.vsa <- restore_stack_frame n.vsa vsa in
                                         let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
                                         let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
@@ -1544,12 +1544,13 @@ struct
                             fathers:=[x];
                         ) bb.nodes in
                     let _ = bb.is_done<-true in
-                    let () = 
+                   (* let () =  
+                        Remove this for now
                         if(details_values)
                             then (* for now, only keeping the last vsa of a bb or not*)
                          (*   let () = bb.nodes <- [List.hd (List.rev bb.nodes)] in*)
                             saved_values:=(bb,(!current_call))::(!saved_values)
-                    in
+                    in*)
                     let () = visit_after bb in
                     List.iter value_analysis_rec bb.sons
         in
@@ -1557,7 +1558,7 @@ struct
         let retn_node=List.filter (fun x -> ((land) x.type_node type_NODE_RETN)>0) (List.concat (List.map (fun x -> x.nodes) func_bbs)) in
         let retn_bb=List.filter (fun bb -> List.exists (fun x-> ((land) x.type_node type_NODE_RETN)>0 ) bb.nodes) func_bbs in
         let () = 
-            if((details_values || flow_graph) && addr_caller != 0) then 
+            if((flow_graph) && addr_caller != 0) then 
                 List.iter (fun x -> saved_ret_call := (addr_caller, n_caller, x.addr_bb, !current_call)::(!saved_ret_call)) retn_bb
         in
         match retn_node with
@@ -1603,7 +1604,7 @@ struct
                                     if(print_graph) 
                                     then 
                                         let () = number_call:=(!number_call+1) in
-                                        let () = saved_call := (bb_ori,func_eip,(!current_call),(!number_call))::(!saved_call) in 
+                                        let () = saved_call := (bb_ori.addr_bb,func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
                                 let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count max_count verbose show_call print_graph in
@@ -1776,7 +1777,7 @@ struct
             let () = Printf.printf "Compare %x %x : %d \n" bb1.addr_bb bb2.addr_bb ( compare (bb1.addr_bb/0x100) (bb2.addr_bb/0x100))
             in compare (bb1.addr_bb) (bb2.addr_bb) 
         in
-        let funcs_called = List.map (fun (_,eip,_,n) -> (eip.addr_bb/0x100,n) ) calls in
+        let funcs_called = List.map (fun (_,eip,_,n) -> (eip/0x100,n) ) calls in
         let func_convert (eip,bbs,name) n = (eip,List.map (fun x ->x, SITE_NORMAL ) ((*List.sort_uniq compare*) bbs), name,n)  in
         List.map (fun (eip,n) -> func_convert (find_func_eip_no_unloop eip funcs) n) ((eip,0)::funcs_called)
         
@@ -1842,7 +1843,7 @@ struct
             ) l
         in
         let add_call_ori_dst l c = 
-            l@(List.map (fun (bb_ori,bb_dst,n_ori,n_dst) -> (bb_ori.addr_bb,n_ori,bb_dst.addr_bb,n_dst) ) c)
+            l@(List.map (fun (bb_ori,bb_dst,n_ori,n_dst) -> (bb_ori,n_ori,bb_dst,n_dst) ) c)
         in
         let list_arcs = if( not flow_graph_disjoint) then udpate_call_ori_sons_to_ret list_arcs ret else list_arcs in
         let list_arc = add_call_ori_dst list_arcs calls in
@@ -1983,32 +1984,29 @@ struct
             with
                 MAX_EXPLORE -> Printf.printf "Number of func from %s : MAX\n" func_name
             in
-            let _ = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+          (*  let _ = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
             (!count)
         with
             | Not_found -> 
                 let () = Printf.printf "Func %s : error (func not found)\n" func_name in
-                let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+                (*ilet () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
                 (!count)
             | NOT_RET (vsa,ha,hf,score) -> 
                 let () = if(verbose) then Printf.printf "Not ret\n" in
                 let () = Printf.printf "Number of func from %s %d\n" func_name (!count) in
-                let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+            (*    let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
                 (!count) 
             | NOT_RET_NOT_LEAF -> 
-                let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+           (*     let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
                 (!count) 
 
-    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free details_values merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint =
+    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint =
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs in
             let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
-            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free details_values 0 0  flow_graph  in
+            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free  0 0  flow_graph  in
             let _ = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
-            let () = if(merge_output) then print_sg_exp dir_output else print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
-            in
-            if(details_values)
-                then print_values dir_output (!saved_values) (!saved_call) 
+            print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
         with
             | Not_found -> Printf.printf "Func %s : error (not found)\n" func_name
             | NOT_RET (vsa,ha,hf,score) -> ()

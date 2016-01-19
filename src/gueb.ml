@@ -10,7 +10,7 @@ let verbose = ref false
 let show_call = ref false
 let show_free = ref false
 let show_values = ref false
-let details_values = ref false
+(*/let details_values = ref false*)
 let program = ref "reil"
 let func = ref "main"
 let funcs_file = ref ""
@@ -47,7 +47,7 @@ struct
         let malloc = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
         let free = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free) (!details_values) (!merge_output) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) in
+        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free)  (!merge_output) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) in
         Printf.printf "--------------------------------\n"
 
     end ;;
@@ -100,8 +100,7 @@ let () =
         ("-show-free", Arg.Set show_free, "Show freed variables");
         ("-show-values", Arg.Set show_values, "Show values computed (hugeee print)");
       (*  ("-print-graph", Arg.Set print_graph, "Print the graph (for type 2, experimental)");
-        ("-merge-output", Arg.Set print_graph, "Merge output values (experimental)");
-        ("-details-values", Arg.Set details_values, "Details values computed in RAM");*)
+        ("-merge-output", Arg.Set print_graph, "Merge output values (experimental)");*)
         ("-flow-graph-dot", Arg.Set flow_graph_dot, "Export flow graph (Dot)");
         ("-flow-graph-gml", Arg.Set flow_graph_gml, "Export flow graph (Gml)"); 
         ("-flow-graph-call-disjoint", Arg.Set flow_graph_disjoint, "Export as separate functions");

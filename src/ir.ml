@@ -1,5 +1,6 @@
 open Absenv;;
 open Program_piqi;;
+open Program_piqi;;
 
 module type IR = functor (Absenv_v : AbsEnvGenerique) ->
 sig 

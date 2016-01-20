@@ -62,6 +62,26 @@ struct
         | SITE_USE
         | SITE_DF
 
+    type subgraph_node_type =
+        | NODE_OUT
+        | NODE_ALLOC
+        | NODE_FREE
+        | NODE_USE
+        | NODE_DF
+        | NODE_EIP
+        | NODE_EIP_ALLOC
+        | NODE_ALLOC_FREE
+        | NODE_FREE_USE
+
+    let site_to_subgraph_type t =
+        match t with
+        | SITE_NORMAL -> NODE_OUT
+        | SITE_ALLOC -> NODE_ALLOC
+        | SITE_FREE -> NODE_FREE
+        | SITE_USE -> NODE_USE
+        | SITE_DF -> NODE_DF
+        
+
     (* site : (addr,it) * func_name * call_n *)
     type site = (int*int)*string*int
 
@@ -1341,7 +1361,7 @@ struct
     
     let visit_after bb = ()
     
-    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free details_values addr_caller n_caller flow_graph =
+    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free addr_caller n_caller flow_graph =
         let score_childs=ref false in
         let rec merge_father fathers m=
             match fathers with
@@ -1382,16 +1402,15 @@ struct
                     let vsa = Absenv_v.restore_esp n.vsa in
                     n.vsa <- ignore_call vsa number_chunk (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack)
                 | Some a ->
-                    (* If call to malloc , should may be merge this into the stub module *) 
-                    if (List.exists (fun x-> x=a) malloc_addr) then
-                        let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
-                        let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
-                        let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
-                        let () = number_chunk:=!number_chunk+1 in
-                        n.vsa <- Absenv_v.restore_esp n.vsa 
-                    (* If call to free *)
-                    else if (List.exists (fun x-> x=a) free_addr) then
+                    (* If call to free , should may be merge this into the stub module *)
+                    if (List.exists (fun x-> x=a) free_addr) then
                     begin
+                        (* Case of realloc *)
+                        let () = if (List.exists (fun x-> x=a) malloc_addr) then
+                            let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
+                            let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
+                            let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
+                            number_chunk:=!number_chunk+1 in
                         let () = if(verbose) then Printf.printf "Call Free %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack )) in
                         try 
                             let _ =  n.vsa <- Absenv_v.restore_esp n.vsa in
@@ -1422,6 +1441,13 @@ struct
                                      if (verbose) then Printf.printf "Error on free? \n" 
                                 end
                     end
+                    (* If call to malloc *) 
+                    else if (List.exists (fun x-> x=a) malloc_addr) then
+                        let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
+                        let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
+                        let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
+                        let () = number_chunk:=!number_chunk+1 in
+                        n.vsa <- Absenv_v.restore_esp n.vsa 
                     else
                     (* check if stub *)
                     let is_stub, vsa,ha,hf=Stubfunc_v.stub a n.vsa n.ha n.hf number_chunk (n.addr,bb_ori.unloop) func_name (!current_call) backtrack  in
@@ -1443,10 +1469,10 @@ struct
                                 let (func_eip,func_bbs)=(func_eip_ori,func_bbs_ori) in
                                 let number_call_prev = (!current_call) in
                                 let () = 
-                                    if(details_values || flow_graph) 
+                                    if(flow_graph) 
                                     then 
                                         let () = number_call:=(!number_call+1) in
-                                        let () = saved_call := (bb_ori,func_eip,(!current_call),(!number_call))::(!saved_call) in 
+                                        let () = saved_call := (bb_ori.addr_bb,func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
                                 let _ = List.iter (fun x -> init_value x (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) func_name) func_bbs in
@@ -1456,10 +1482,10 @@ struct
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = flush Pervasives.stdout in
-                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free details_values bb_ori.addr_bb number_call_prev flow_graph in
+                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb number_call_prev flow_graph in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
-                                    let () = if(details_values || flow_graph) then current_call:=number_call_prev in
+                                    let () = if(flow_graph) then current_call:=number_call_prev in
                                     let _ = score_childs:=(||) (!score_childs) score in
                                     try
                                         let _ = n.vsa<-Absenv_v.filter_esp_ebp vsa verbose in
@@ -1482,7 +1508,7 @@ struct
                                     | NOT_RET (vsa,ha,hf,score)  ->
                                         let _ = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(details_values || flow_graph) then current_call:=number_call_prev in
+                                        let () = if(flow_graph) then current_call:=number_call_prev in
                                         let _ = score_childs:=(||) (!score_childs) score in
                                         let _ = if (verbose) then 
                                             let _ = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n] bb_ori.unloop) in
@@ -1497,7 +1523,7 @@ struct
                                    | NOT_RET_NOT_LEAF ->
                                         let () = if (verbose) then Printf.printf "End call (NOT RET NOT LEAF) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(details_values || flow_graph) then current_call:=number_call_prev in
+                                        let () = if(flow_graph) then current_call:=number_call_prev in
                                         let _ = n.vsa <- restore_stack_frame n.vsa vsa in
                                         let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
                                         let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
@@ -1524,12 +1550,13 @@ struct
                             fathers:=[x];
                         ) bb.nodes in
                     let _ = bb.is_done<-true in
-                    let () = 
+                   (* let () =  
+                        Remove this for now
                         if(details_values)
                             then (* for now, only keeping the last vsa of a bb or not*)
                          (*   let () = bb.nodes <- [List.hd (List.rev bb.nodes)] in*)
                             saved_values:=(bb,(!current_call))::(!saved_values)
-                    in
+                    in*)
                     let () = visit_after bb in
                     List.iter value_analysis_rec bb.sons
         in
@@ -1537,7 +1564,7 @@ struct
         let retn_node=List.filter (fun x -> ((land) x.type_node type_NODE_RETN)>0) (List.concat (List.map (fun x -> x.nodes) func_bbs)) in
         let retn_bb=List.filter (fun bb -> List.exists (fun x-> ((land) x.type_node type_NODE_RETN)>0 ) bb.nodes) func_bbs in
         let () = 
-            if((details_values || flow_graph) && addr_caller != 0) then 
+            if((flow_graph) && addr_caller != 0) then 
                 List.iter (fun x -> saved_ret_call := (addr_caller, n_caller, x.addr_bb, !current_call)::(!saved_ret_call)) retn_bb
         in
         match retn_node with
@@ -1583,7 +1610,7 @@ struct
                                     if(print_graph) 
                                     then 
                                         let () = number_call:=(!number_call+1) in
-                                        let () = saved_call := (bb_ori,func_eip,(!current_call),(!number_call))::(!saved_call) in 
+                                        let () = saved_call := (bb_ori.addr_bb,func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
                                 let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count max_count verbose show_call print_graph in
@@ -1646,34 +1673,53 @@ struct
         | SITE_USE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
         | SITE_DF -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d DF²\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
 
-    let print_bbt_dot oc (bb,t) f n=
-        let addr = bb.addr_bb in
+    let print_bbt_dot oc (bb,t) f n id_node=
+        let addr = bb.addr_bb/0x100 in
+        let id_node_txt = Printf.sprintf "%d%d" n addr in
+        let () = Hashtbl.add id_node (n,addr) id_node_txt in
+        let print_event oc id_node_txt f addr t color = Printf.fprintf oc "%s[label=\"%s -> 0x%x %s\", type=\"%s\", style=filled,shape=\"box\", fillcolor=\"%s\"]\n" id_node_txt f addr f t color in
+        let print oc id_node_txt addr t color = Printf.fprintf oc "%s[label=\"0x%x\", type=\"%s\", style=filled, fillcolor=\"%s\"]\n" id_node_txt addr t color in
         match t with
-        | SITE_NORMAL -> Printf.fprintf oc "%d%d[label=\"0x%x \", type=\"normal\"]\n"  n (addr/0x100) (addr/0x100)
-        | SITE_ALLOC -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x alloc\", type=\"alloc\", style=filled,shape=\"box\", fillcolor=\"turquoise\"]\n" n (addr/0x100)  f (addr/0x100) 
-        | SITE_FREE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x free\", type=\"free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (addr/0x100)  f (addr/0x100) 
-        | SITE_USE -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100)  f (addr/0x100) 
-        | SITE_DF -> Printf.fprintf oc "%d%d[label=\"%s -> 0x%x DF\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100)  f (addr/0x100) 
+        | NODE_OUT -> Printf.fprintf oc "%s[label=\"0x%x \", type=\"normal\"]\n"  id_node_txt (addr/0x100)
+        | NODE_ALLOC -> print_event oc id_node_txt f addr "alloc" "blue" 
+        | NODE_FREE -> print_event oc id_node_txt f addr "free" "green" 
+        | NODE_USE -> print_event oc id_node_txt f addr "use" "red" 
+        | NODE_DF -> print_event oc id_node_txt f addr "df" "red" 
+        | NODE_EIP -> print oc id_node_txt addr "eip" "orange" 
+        | NODE_EIP_ALLOC -> print oc id_node_txt addr "eipalloc" "pink" 
+        | NODE_ALLOC_FREE -> print oc id_node_txt addr "allocfree" "aquamarine"
+        | NODE_FREE_USE -> print oc id_node_txt addr "freeuse" "darkolivegreen2"  
 
-    let print_bbt_gml oc (bb,t) f n=
-        let addr = bb.addr_bb in
+    let print_bbt_gml oc (bb,t) f n id_node=
+        let addr = bb.addr_bb/0x100 in
+        let id_node_val = (Hashtbl.length id_node) +1 in
+        let () = Hashtbl.add id_node (n,addr) id_node_val in
+        let print oc n id_node_val addr t = Printf.fprintf oc "node [ \n id %d \n addr %d \n call %d \n label \"0x%x\" \n type \"%s\" \n]\n" id_node_val addr n addr t in
         match t with
-        | SITE_NORMAL -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"normal\" \n]\n" n (addr/0x100) (addr/0x100)
-        | SITE_ALLOC -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"alloc\" \n]\n" n (addr/0x100) (addr/0x100)
-        | SITE_FREE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"free\" \n]\n" n (addr/0x100) (addr/0x100)  
-        | SITE_USE -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"use\" \n]\n" n (addr/0x100) (addr/0x100)  
-        | SITE_DF -> Printf.fprintf oc "node [ \n id %d%d \n label \"0x%x\" \n type \"DF\" \n]\n" n (addr/0x100) (addr/0x100)  
+        | NODE_OUT -> print oc n id_node_val addr "normal"
+        | NODE_ALLOC -> print oc n id_node_val addr "alloc"
+        | NODE_FREE ->  print oc n id_node_val addr "free"
+        | NODE_USE -> print oc n id_node_val addr "use"
+        | NODE_DF -> print oc n id_node_val addr "df" 
+        | NODE_EIP -> print oc n id_node_val addr "eip" 
+        | NODE_EIP_ALLOC ->  print oc n id_node_val addr"eipalloc" 
+        | NODE_ALLOC_FREE -> print oc n id_node_val addr "allocfree" 
+        | NODE_FREE_USE -> print oc n id_node_val addr "freeuse" 
 
     let print_site_arc_dot oc (((addr,it),f,n),t) leafs =
         List.iter (fun (((addr_,it_),f_,n_),t_) -> 
             Printf.fprintf oc "%d%d%d -> %d%d%d\n" n (addr/0x100) it n_ (addr_/0x100) it_ 
         ) leafs  
 
-    let print_bbt_arc_dot oc (ori_addr,ori_n,dst_addr,dst_n) =
-        Printf.fprintf oc "%d%d -> %d%d\n" ori_n (ori_addr/0x100) dst_n (dst_addr/0x100) 
+    let print_bbt_arc_dot oc (ori_addr,ori_n,dst_addr,dst_n) id_node =
+        let id_src = Hashtbl.find id_node (ori_n,(ori_addr/0x100)) in
+        let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
+        Printf.fprintf oc "%s -> %s\n" id_src id_dst
 
-    let print_bbt_arc_gml oc (ori_addr,ori_n,dst_addr,dst_n) =
-        Printf.fprintf oc "edge [ \n source %d%d \n target %d%d\n]\n" ori_n (ori_addr/0x100) dst_n (dst_addr/0x100) 
+    let print_bbt_arc_gml oc (ori_addr,ori_n,dst_addr,dst_n) id_node =
+        let id_src = Hashtbl.find id_node (ori_n,(ori_addr/0x100)) in
+        let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
+        Printf.fprintf oc "edge [ \n source %d \n target %d\n]\n" id_src id_dst
 
     let print_begin_dot oc =
         Printf.fprintf oc "strict digraph g {\n"
@@ -1694,12 +1740,6 @@ struct
 
     let print_group_gml oc bbst n = ()
    
-    let print_color_dot oc eip eip_alloc alloc_free free_use =
-        let () = Printf.fprintf oc "%d%d[style=filled,fillcolor=orange]\n" (snd eip) (fst eip) in
-        let () = List.iter (fun (addr,n) -> Printf.fprintf oc "%d%d[style=filled,fillcolor=cadetblue2]\n" n addr) eip_alloc in
-        let () = List.iter (fun (addr,n) -> Printf.fprintf oc "%d%d[style=filled,fillcolor=aquamarine]\n" n addr) alloc_free in
-        List.iter (fun (addr,n) -> Printf.fprintf oc "%d%d[style=filled,fillcolor=pink]\n" n addr) free_use 
- 
     let export_call_graph_uaf filename print_begin print_end print_node print_arc (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
         let oc = open_out filename in 
         let _ = print_begin oc in
@@ -1743,7 +1783,7 @@ struct
             let () = Printf.printf "Compare %x %x : %d \n" bb1.addr_bb bb2.addr_bb ( compare (bb1.addr_bb/0x100) (bb2.addr_bb/0x100))
             in compare (bb1.addr_bb) (bb2.addr_bb) 
         in
-        let funcs_called = List.map (fun (_,eip,_,n) -> (eip.addr_bb/0x100,n) ) calls in
+        let funcs_called = List.map (fun (_,eip,_,n) -> (eip/0x100,n) ) calls in
         let func_convert (eip,bbs,name) n = (eip,List.map (fun x ->x, SITE_NORMAL ) ((*List.sort_uniq compare*) bbs), name,n)  in
         List.map (fun (eip,n) -> func_convert (find_func_eip_no_unloop eip funcs) n) ((eip,0)::funcs_called)
         
@@ -1761,7 +1801,7 @@ struct
         ) bbs in
         !ret
             
-    let update_type list_func sites =
+    let update_type_func list_func sites =
         let update (eip,bbst,name,n) =
             let bbst = List.map (fun (bb,t) ->
                 try
@@ -1776,14 +1816,30 @@ struct
                              else if (List.exists (fun (_,t) -> t = SITE_ALLOC) m) then SITE_ALLOC
                              else SITE_NORMAL
                     in
-                    (bb,t_)
+                    (bb,site_to_subgraph_type t_)
                 with
-                    _ -> (bb,t)
+                    _ -> (bb,site_to_subgraph_type t)
             ) bbst in
             (eip,bbst,name,n)
         in 
         List.map update list_func
 
+    let update_type_subgraph list_funcs eip eip_alloc alloc_free free_use =
+        let update (eip_,bbst,name,n) =
+            let bbst = List.map (fun (bb,t) ->
+                let t_ =
+                    if (t = NODE_ALLOC || t = NODE_FREE || t = NODE_USE || t = NODE_DF) then t
+                    else if (bb.addr_bb/0x100 = fst eip && n = snd eip) then NODE_EIP 
+                    else if (List.exists (fun a -> bb.addr_bb/0x100 = fst a && n = snd a) eip_alloc) then NODE_EIP_ALLOC
+                    else if (List.exists (fun a -> bb.addr_bb/0x100 = fst a && n = snd a) (List.concat alloc_free)) then NODE_ALLOC_FREE
+                    else if (List.exists (fun a -> bb.addr_bb/0x100 = fst a && n = snd a) (List.concat (List.concat( free_use)))) then NODE_FREE_USE
+                    else t
+               in (bb,t_)
+             ) bbst in
+             (eip,bbst,name,n)
+        in
+        List.map update list_funcs
+            
     let update_arcs list_arcs calls ret flow_graph_disjoint =
         let udpate_call_ori_sons_to_ret l r = 
             List.map (fun (ori_addr, ori_n, dst_addr, dst_n) -> 
@@ -1794,7 +1850,7 @@ struct
             ) l
         in
         let add_call_ori_dst l c = 
-            l@(List.map (fun (bb_ori,bb_dst,n_ori,n_dst) -> (bb_ori.addr_bb,n_ori,bb_dst.addr_bb,n_dst) ) c)
+            l@(List.map (fun (bb_ori,bb_dst,n_ori,n_dst) -> (bb_ori,n_ori,bb_dst,n_dst) ) c)
         in
         let list_arcs = if( not flow_graph_disjoint) then udpate_call_ori_sons_to_ret list_arcs ret else list_arcs in
         let list_arc = add_call_ori_dst list_arcs calls in
@@ -1840,13 +1896,15 @@ struct
 
     let export_flow_graph_uaf filename print_begin print_end print_node print_arc print_group alloc free use eip calls funcs ret flow_graph_disjoint =
         let oc = open_out filename in 
+        (* id_node use as index for exporting, and keeping relations between print node and arcs, addr * n -> id *)
+        let id_node = Hashtbl.create 400 in
         let _ = print_begin oc in
         let () = Printf.printf "Export %s\n" filename in
         let alloc = List.hd (alloc) in
         let free = List.map (fun x -> List.hd ( x)) free in 
         let use = List.map (fun x -> List.hd (x)) use in 
         let list_func = callgraph_to_list eip calls funcs in
-        let list_func = update_type list_func (alloc::(free@use)) in
+        let list_func = update_type_func list_func (alloc::(free@use)) in
         let list_arcs = List.concat (List.map (fun (eip,bbst,name,n) -> create_arc_bbs bbst n ) list_func) in
         let list_arcs = update_arcs list_arcs calls ret flow_graph_disjoint in
         let list_arcs = List.filter (fun (a,_,b,_) -> a/0x100!=b/0x100) list_arcs in (* Remove loop on bb himself (can be introduce by REIL *)
@@ -1859,15 +1917,18 @@ struct
         let alloc_addr,alloc_n = find_bb_addr alloc funcs in
         let free_addr = List.map (fun x -> find_bb_addr x funcs) free in
         let use_addr = List.map (fun x -> find_bb_addr x funcs) use in
+
         let eip_to_alloc = find_nodes_between eip 0 alloc_addr alloc_n arcs arcs_invert in
         let alloc_to_free = List.map (fun (f_addr,f_n) -> find_nodes_between alloc_addr alloc_n f_addr f_n arcs arcs_invert) free_addr in
         let free_to_use = List.map (fun (f_addr,f_n) ->  List.map (fun (u_addr,u_n) -> find_nodes_between f_addr f_n u_addr u_n arcs arcs_invert) use_addr) free_addr in
+
+        let list_func = update_type_subgraph list_func (eip,0) (eip_to_alloc) (alloc_to_free) (free_to_use) in
+
         (* For exporting, we compare bb with addr /0x100, because of REIL *) 
-        let compare_bb (bb1,_) (bb2,_) = compare (bb1.addr_bb) (bb2.addr_bb) in
-        let () = print_color_dot oc (eip,0) eip_to_alloc (List.concat alloc_to_free) (List.concat (List.concat free_to_use)) in
+        let compare_bb (bb1,_) (bb2,_) = compare (bb1.addr_bb/0x100) (bb2.addr_bb/0x100) in
         let () = List.iter (fun (_,bbst,_,n) -> print_group oc bbst n) list_func in
-        let () = List.iter (fun (eip,bbst,name,n) -> List.iter (fun x ->  print_node oc x name n ) (List.sort_uniq compare_bb bbst) ) list_func in
-        let () = List.iter (fun x -> print_arc oc x) list_arcs in
+        let () = List.iter (fun (eip,bbst,name,n) -> List.iter (fun x ->  print_node oc x name n id_node ) (List.sort_uniq compare_bb bbst) ) list_func in
+        let () = List.iter (fun x -> print_arc oc x id_node) list_arcs in
         let () = print_end oc  in
         close_out oc  
 
@@ -1904,16 +1965,17 @@ struct
                 end
                 in
                 let n = ref 0 in
-                let _ = List.iter (fun (alloc,free,use) -> export_call_graph_uaf (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  print_begin_dot print_end_dot print_site_dot print_site_arc_dot alloc free use ) elems in
-                let () = if (flow_graph_dot) then   
-                     let () = List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot alloc free use eip calls list_funcs ret false ) elems 
-                    in
-                    if(flow_graph_disjoint) then
-                        List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details-disjoint.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot alloc free use eip calls list_funcs ret true ) elems 
-                in
-                let () = if (flow_graph_gml) then
-                    List.iter (fun (alloc,free,use) -> export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.gml" dir_output str chunk_id !n) print_begin_gml print_end_gml print_bbt_gml print_bbt_arc_gml print_group_gml alloc free use eip calls list_funcs ret false ) elems 
-                in ()
+                List.iter (fun (alloc,free,use) ->
+                        let () = export_call_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  print_begin_dot print_end_dot print_site_dot print_site_arc_dot alloc free use in
+                        let () = if (flow_graph_dot) then   
+                            let () = export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot alloc free use eip calls list_funcs ret false  
+                            in if(flow_graph_disjoint) then
+                                    export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details-disjoint.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot alloc free use eip calls list_funcs ret true 
+                        in
+                        let () = if (flow_graph_gml) then
+                             export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.gml" dir_output str chunk_id !n) print_begin_gml print_end_gml print_bbt_gml print_bbt_arc_gml print_group_gml alloc free use eip calls list_funcs ret false
+                        in n:=!n+1 
+                ) elems
             ) sg_uaf_by_alloc ;;
 
 
@@ -1929,32 +1991,29 @@ struct
             with
                 MAX_EXPLORE -> Printf.printf "Number of func from %s : MAX\n" func_name
             in
-            let _ = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+          (*  let _ = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
             (!count)
         with
             | Not_found -> 
                 let () = Printf.printf "Func %s : error (func not found)\n" func_name in
-                let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+                (*ilet () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
                 (!count)
             | NOT_RET (vsa,ha,hf,score) -> 
                 let () = if(verbose) then Printf.printf "Not ret\n" in
                 let () = Printf.printf "Number of func from %s %d\n" func_name (!count) in
-                let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+            (*    let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
                 (!count) 
             | NOT_RET_NOT_LEAF -> 
-                let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in
+           (*     let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
                 (!count) 
 
-    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free details_values merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint =
+    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint =
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs in
             let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
-            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free details_values 0 0  flow_graph  in
+            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free  0 0  flow_graph  in
             let _ = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
-            let () = if(merge_output) then print_sg_exp dir_output else print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
-            in
-            if(details_values)
-                then print_values dir_output (!saved_values) (!saved_call) 
+            print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
         with
             | Not_found -> Printf.printf "Func %s : error (not found)\n" func_name
             | NOT_RET (vsa,ha,hf,score) -> ()

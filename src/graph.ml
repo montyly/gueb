@@ -1827,8 +1827,9 @@ struct
     let update_type_subgraph list_funcs eip eip_alloc alloc_free free_use =
         let update (eip_,bbst,name,n) =
             let bbst = List.map (fun (bb,t) ->
-                let t_ = 
-                    if (bb.addr_bb/0x100 = fst eip && n = snd eip) then NODE_EIP 
+                let t_ =
+                    if (t = NODE_ALLOC || t = NODE_FREE || t = NODE_USE || t = NODE_DF) then t
+                    else if (bb.addr_bb/0x100 = fst eip && n = snd eip) then NODE_EIP 
                     else if (List.exists (fun a -> bb.addr_bb/0x100 = fst a && n = snd a) eip_alloc) then NODE_EIP_ALLOC
                     else if (List.exists (fun a -> bb.addr_bb/0x100 = fst a && n = snd a) (List.concat alloc_free)) then NODE_ALLOC_FREE
                     else if (List.exists (fun a -> bb.addr_bb/0x100 = fst a && n = snd a) (List.concat (List.concat( free_use)))) then NODE_FREE_USE

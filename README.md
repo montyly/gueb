@@ -31,17 +31,31 @@ GUEB was tested on a Ubuntu 14.04 64 bits.
 You need to have ocaml (at least v4.02) installed, if not :
 ```  
 add-apt-repository ppa:avsm/ppa
+apt-get update
 apt-get install ocaml m4 opam
 opam init
+eval `opam config env`
 ```
 You also need to have piqi installed :
 ```
+opam update
 opam install piqi
 ```
 Then compile the code
 ```
 cd src
 export PATH=$PATH:~/.opam/system/bin/ && make
+```
+
+Be sure that you have Java 8 installed, if not : (tested on Ubuntu)
+```
+add-apt-repository ppa:webupd8team/java
+apt-get update
+apt-get install oracle-java8-installer
+```
+Note that you have differents version of Java installed in the same time and change with :
+```
+update-alternatives --config java
 ```
 
 Finally you need to have [jython](http://www.jython.org/downloads.html) in version 2.7.0. Note that Jython works better installed that with the standalone .jar version.

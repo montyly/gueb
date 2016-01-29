@@ -19,6 +19,7 @@ sig
     val parse_func_protobuf_number_unloop :  Program_piqi.function_-> int                    (* bbs,connection_unfilter,eip, number_unloop,nodes,call_retn)  *)
 
     val get_value_jump : ir_stmt -> Absenv_v.absenv list -> int option
+    val get_first_arg: ir_stmt -> int option
     val function_transfer : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list -> Absenv_v.absenv list
     val access_heap : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list
     val check_uaf : (ir_stmt*Absenv_v.absenv list*Absenv_v.he list*(int*int)) -> (ir_stmt*Absenv_v.he list *(int*int)) option 
@@ -406,6 +407,10 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
             )
         | _ -> None;;
 
+    let get_first_arg ir =
+        match ir.arg0 with
+        | Integer i -> Some i
+        | _ -> None
 
     let arg_to_string a=
         match a with 

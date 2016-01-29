@@ -64,7 +64,8 @@ struct
         let _ = close_in channel in 
         let raw_heap_func = raw_program.heap_func in
         let list_funcs = raw_program.functions in
-        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] (!dir_output) (!verbose) (!show_call) (!print_graph) in
+        let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
+        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] dir (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) in
         flush Pervasives.stdout
 
 end ;;

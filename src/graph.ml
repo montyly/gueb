@@ -1433,7 +1433,7 @@ struct
             | hd::tl ->
                 ((List.fold_left (fun x y-> Absenv_v.merge x y.vsa) hd.vsa tl),(List.fold_left (fun x y ->Absenv_v.merge_he x y.ha) hd.ha tl),( List.fold_left (fun x y ->Absenv_v.merge_he x y.hf) hd.hf tl ),score_heap_use func_bbs func_name (!score_childs))
     
-    let rec explore_graph func list_funcs backtrack ref_count max_count verbose show_call addr_caller addr_caller_unloop  n_caller flow_graph parsed_func =
+    let rec explore_graph func list_funcs backtrack ref_count max_count ref_count_reil_inst verbose show_call addr_caller addr_caller_unloop  n_caller flow_graph parsed_func =
         if (!ref_count > max_count) then raise MAX_EXPLORE
         else
         let (func_eip,func_bbs,func_name)=func in
@@ -1464,7 +1464,7 @@ struct
                                         let () = saved_call := ((bb_ori.addr_bb,bb_ori.unloop),func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
-                                let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count max_count verbose show_call bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
+                                let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count max_count ref_count_reil_inst verbose show_call bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
                                 if(flow_graph) then current_call:=number_call_prev
                         with
                             Not_found -> ()
@@ -1475,6 +1475,7 @@ struct
             let fathers=ref ((List.map (fun x -> List.nth x.nodes ((List.length x.nodes)-1)) fathers_filter )) in
             let _ = List.fold_left (
                 fun pred x ->
+                    let () = ref_count_reil_inst := (!ref_count_reil_inst) + 1 in
                     let () = explore_nodes_rec x pred (!fathers) bb in
                     let () = fathers:=[x] in
                     x 
@@ -1883,14 +1884,15 @@ struct
         ()
  
     let launch_supercallgraph_analysis func_name list_funcs list_malloc list_free dir_output verbose show_call flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
-        let count = ref 0 in
+        let count = ref 1 in
+        let count_reil_inst = ref 0 in
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs parsed_func in
             let () = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs in
             let () = try
-                let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count 400 verbose show_call 0 0 0 flow_graph parsed_func in
+                let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count 400 count_reil_inst verbose show_call 0 0 0 flow_graph parsed_func in
                 let () = print_g dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint in
-                Printf.printf "Number of func from %s : %d\n" func_name (!count) 
+                Printf.printf "Number of func from %s : %d and %d REIL inst\n" func_name (!count) (!count_reil_inst)
             with
                 MAX_EXPLORE -> Printf.printf "Number of func from %s : MAX\n" func_name
             in

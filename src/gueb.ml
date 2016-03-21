@@ -77,9 +77,9 @@ let launch_stub stub p f =
     let module M_Jasper = GuebAnalysis(AbsEnv)(REIL)(StubJasper)  in
     let module M_Gnome_nettool = GuebAnalysis(AbsEnv)(REIL)(StubGnomeNettool)  in
     match (stub) with
-        | str when str="optipng" -> M_Optipng.launch_analysis p f  
-        | str when str="jasper" -> M_Jasper.launch_analysis p f  
-        | str when str="gnome-nettool" -> M_Gnome_nettool.launch_analysis p f  
+        | "optipng" -> M_Optipng.launch_analysis p f  
+        | "jasper" -> M_Jasper.launch_analysis p f  
+        | "gnome-nettool" -> M_Gnome_nettool.launch_analysis p f  
         | _ -> M0.launch_analysis p f 
 
 let read_lines_file filename = 

@@ -1,0 +1,5 @@
+List of stuff that will be add soon or later: 
+
+* Re-write absenv to reduce computation time
+* Add possibility to merge multiples binaries into one analysis (eg: add support for library)
+* Using BinExport to rewrite gui importation (https://github.com/google/binexport)

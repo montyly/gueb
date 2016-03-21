@@ -863,6 +863,20 @@ struct
       Not_found -> Printf.printf "Eip not found ! \n"
     
     let find_nodes_from_addr list_addr list_nodes =List.map (fun x -> new_node x  ) (List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes );;
+   
+
+    let rec clean_vsa_nodes nodes = 
+        match nodes with
+        | [] -> ()
+        | hd::tl -> let () = hd.vsa <- [] in
+                    let () = hd.ha <- [] in
+                    let () = hd.hf <- [] in
+                    clean_vsa_nodes tl 
+ 
+    let rec clean_vsa_bbs bbs = 
+        match bbs with
+        | [] -> ()
+        | hd::tl -> let () = clean_vsa_nodes hd.nodes in clean_vsa_bbs tl    
     
     let parse_protobuf_no_unloop func =
         let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
@@ -890,29 +904,30 @@ struct
  
 
     let parse_protobuf_number func number_unloop  =
-        let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
-        let connexion=List.filter (fun (x,y) -> x!=y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
-        let bb_nodes = List.map (fun x -> let (addr,list_nodes)=x in (create_bb addr,list_nodes)) bbs in
-        let bbs_only=List.map (fun x-> let (a,b)=x in a)  bb_nodes in
-        let bbs_connect= connect_bbs bbs_only connexion in
-        let eip=find_eip bbs_connect eip_addr in
-        let bb_unloop= unrool eip bbs_connect number_unloop  in
-        let f addr l = 
-            let (bb_ret,list_ret) = List.find (fun x -> let (a,b)=x in a.addr_bb==addr) l 
-            in list_ret
-        in
-        let bbs_with_nodes_list=List.map (fun x -> (x,f x.addr_bb bb_nodes)) bb_unloop in
-        let nodes_begin=(List.map create_nodes nodes) in
-        let bbs=List.map (
-            fun x-> 
-                let (bb,list_nodes)=x in
-                let () = bb.nodes<- (find_nodes_from_addr list_nodes nodes_begin) in bb
-            ) bbs_with_nodes_list in
-        let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in
-        let () = begin_eip eip in
-        let () = update_call_retn nodes call_retn in
-(*        let () = update_malloc_free_protobuf nodes  in*)
-        (eip,bbs,func.name);;
+
+            let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
+            let connexion=List.filter (fun (x,y) -> x!=y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
+            let bb_nodes = List.map (fun x -> let (addr,list_nodes)=x in (create_bb addr,list_nodes)) bbs in
+            let bbs_only=List.map (fun x-> let (a,b)=x in a)  bb_nodes in
+            let bbs_connect= connect_bbs bbs_only connexion in
+            let eip=find_eip bbs_connect eip_addr in
+            let bb_unloop= unrool eip bbs_connect number_unloop  in
+            let f addr l = 
+                let (bb_ret,list_ret) = List.find (fun x -> let (a,b)=x in a.addr_bb==addr) l 
+                in list_ret
+            in
+            let bbs_with_nodes_list=List.map (fun x -> (x,f x.addr_bb bb_nodes)) bb_unloop in
+            let nodes_begin=(List.map create_nodes nodes) in
+            let bbs=List.map (
+                fun x-> 
+                    let (bb,list_nodes)=x in
+                    let () = bb.nodes<- (find_nodes_from_addr list_nodes nodes_begin) in bb
+                ) bbs_with_nodes_list in
+            let nodes=List.concat (List.map (fun x -> x.nodes) bbs) in
+            let () = begin_eip eip in
+            let () = update_call_retn nodes call_retn in
+    (*        let () = update_malloc_free_protobuf nodes  in*)
+            (eip,bbs,func.name);;
     
     let rec remove_loop_time timeout func  number_unloop (*old_h*) =
         if (number_unloop==0) then parse_protobuf_number func  0
@@ -926,15 +941,26 @@ struct
             let () = flush Pervasives.stdout in 
             remove_loop_time timeout func  (max 0 (number_unloop-1)) 
     
-    let parse_protobuf func  = 
+    let parse_protobuf func parsed_func = 
+(*        try
+            let (eip,bbs,n) = Hashtbl.find parsed_func func in
+            let () = clean_vsa_bbs bbs in
+(*            let () = Printf.printf "Func %s already seen !\n" n in*)
+            (eip,bbs,n)
+        with Not_found ->*)
             let number_unloop=Ir_v.parse_func_protobuf_number_unloop func in
-            if (number_unloop==0) then  parse_protobuf_number func  0
+            let ret = 
+                if (number_unloop==0) then  parse_protobuf_number func  0
             else
                 let old_handler = Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout_unloop)) in
                 let ret = remove_loop_time 10 func  number_unloop (*old_handler*) in
                 let _ = Unix.alarm 0 in
                 let _ = Sys.signal Sys.sigalrm old_handler in
                 ret
+            in
+(*            let () = Hashtbl.add parsed_func func ret in*)
+            ret
+
    
     (*
      * Pretty print function
@@ -1143,7 +1169,7 @@ struct
          then Printf.printf "Uaf find in %x Backtrack %s \n ###################################################################\n" addr (String.concat " " (List.map print_backtrack backtrack ))
         ) (List.map (fun x -> (x.nodes,x.unloop) ) bbs )
     
-    let find_func_name func_name list_func  =
+    let find_func_name func_name list_func parsed_func =
         (* Dirty hack, we kept DF in name for pretty print, so we need to remove it *)
         let func_name = try
                 if (String.sub func_name 0 3 = "DF ") then String.sub func_name 3 ((String.length func_name)-3)
@@ -1151,7 +1177,7 @@ struct
                 with _ -> func_name
         in
         let func =(List.find (fun (x:Program_piqi.function_) -> x.name = func_name) list_func) in 
-        parse_protobuf func 
+        parse_protobuf func parsed_func
     
     let find_func_name_no_unloop func_name list_func  =
         (* Dirty hack, we kept DF in name for pretty print, so we need to remove it *)
@@ -1163,9 +1189,9 @@ struct
         let func =(List.find (fun (x:Program_piqi.function_) -> x.name = func_name) list_func) in 
         parse_protobuf_no_unloop func 
 
-    let find_func_eip func_eip list_func =
+    let find_func_eip func_eip list_func parsed_func =
         let func = List.find (fun (x:Program_piqi.function_) -> ( ((Int64.to_int x.addr_to_call)/0x100) = func_eip)) list_func in   
-        parse_protobuf func 
+        parse_protobuf func parsed_func
     
     let find_func_eip_no_unloop func_eip list_func =
         let func = List.find (fun (x:Program_piqi.function_) -> ( ((Int64.to_int x.addr_to_call)/0x100)  = func_eip)) list_func in   
@@ -1185,7 +1211,7 @@ struct
     
     let visit_after bb = ()
     
-    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free addr_caller  addr_caller_unloop n_caller flow_graph =
+    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free addr_caller  addr_caller_unloop n_caller flow_graph parsed_func =
         let score_childs=ref false in
         let rec merge_father fathers m=
             match fathers with
@@ -1282,7 +1308,7 @@ struct
                             n.hf<-hf
                     else
                         try
-                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs  in
+                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs parsed_func in
                             if (List.exists (fun (addr,x,n) -> x=func_name) backtrack) 
                                 then
                                 let () = if (verbose) then Printf.printf "Rec %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack ))  in
@@ -1306,7 +1332,7 @@ struct
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let () = flush Pervasives.stdout in
-                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph in
+                                    let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
                                     let () = if(flow_graph) then current_call:=number_call_prev in
@@ -1407,7 +1433,7 @@ struct
             | hd::tl ->
                 ((List.fold_left (fun x y-> Absenv_v.merge x y.vsa) hd.vsa tl),(List.fold_left (fun x y ->Absenv_v.merge_he x y.ha) hd.ha tl),( List.fold_left (fun x y ->Absenv_v.merge_he x y.hf) hd.hf tl ),score_heap_use func_bbs func_name (!score_childs))
     
-    let rec explore_graph func list_funcs backtrack ref_count max_count verbose show_call addr_caller addr_caller_unloop  n_caller flow_graph =
+    let rec explore_graph func list_funcs backtrack ref_count max_count verbose show_call addr_caller addr_caller_unloop  n_caller flow_graph parsed_func =
         if (!ref_count > max_count) then raise MAX_EXPLORE
         else
         let (func_eip,func_bbs,func_name)=func in
@@ -1421,7 +1447,7 @@ struct
                     | None -> ()
                     | Some a -> 
                         try
-                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs  in
+                            let (func_eip_ori,func_bbs_ori,func_name)= find_func_eip a list_funcs parsed_func in
                                 if (List.exists (fun x -> x=func_name) backtrack) then ()
                                 else
                                    let (func_eip,func_bbs)=(func_eip_ori,func_bbs_ori) in
@@ -1438,7 +1464,7 @@ struct
                                         let () = saved_call := ((bb_ori.addr_bb,bb_ori.unloop),func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
-                                let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count max_count verbose show_call bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph in
+                                let () = explore_graph (func_eip,func_bbs,func_name) list_funcs (func_name::backtrack) ref_count max_count verbose show_call bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
                                 if(flow_graph) then current_call:=number_call_prev
                         with
                             Not_found -> ()
@@ -1856,13 +1882,13 @@ struct
             export_flow_graph (Printf.sprintf "%s/graph-details.gml" dir_output ) print_begin_gml print_end_gml print_bbt_gml print_bbt_arc_gml print_group_gml  eip calls list_funcs ret false in
         ()
  
-    let launch_supercallgraph_analysis func_name list_funcs list_malloc list_free dir_output verbose show_call flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint =
+    let launch_supercallgraph_analysis func_name list_funcs list_malloc list_free dir_output verbose show_call flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
         let count = ref 0 in
         try 
-            let (eip,bbs,name) = find_func_name func_name list_funcs  in
+            let (eip,bbs,name) = find_func_name func_name list_funcs parsed_func in
             let () = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs in
             let () = try
-                let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count 400 verbose show_call 0 0 0 flow_graph in
+                let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count 400 verbose show_call 0 0 0 flow_graph parsed_func in
                 let () = print_g dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint in
                 Printf.printf "Number of func from %s : %d\n" func_name (!count) 
             with
@@ -1884,11 +1910,11 @@ struct
            (*     let () = if(print_graph) then print_graph_dot dir_output (!saved_values) (!saved_call) in*)
                 (!count) 
 
-    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint =
+    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
         try 
-            let (eip,bbs,name) = find_func_name func_name list_funcs in
+            let (eip,bbs,name) = find_func_name func_name list_funcs parsed_func in
             let () = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
-            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free  0 0 0 flow_graph  in
+            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free  0 0 0 flow_graph parsed_func in
             let () = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
             print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
         with

@@ -26,6 +26,7 @@ let flow_graph_gml = ref false
 let flow_graph_disjoint = ref false
 
 
+
 (* Signature *)
 module type TAnalysis = functor (Absenv_v : AbsEnvGenerique)-> functor (Ir_v : IR) -> functor (Stubfunc_v : Stubfunc) ->
 sig
@@ -36,7 +37,10 @@ end ;;
 module GuebAnalysis: TAnalysis = functor (Absenv_v : AbsEnvGenerique) -> functor (Ir_v : IR) -> functor (Stubfunc_v : Stubfunc)->
 struct
     module GraphIR = My_Graph (Absenv_v) (Ir_v) (Stubfunc_v)
-     let launch_analysis program_file func_name  = 
+ 
+    let parsed_func = Hashtbl.create 100
+
+    let launch_analysis program_file func_name  = 
         let channel =
             try open_in_bin program_file 
             with _ -> let () = Printf.printf "REIL file not found (have you used -reil ? )\n" in exit 0
@@ -49,7 +53,7 @@ struct
         let malloc = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
         let free = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free)  (!merge_output) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) in
+        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free)  (!merge_output) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
         Printf.printf "--------------------------------\n"
 
     end ;;
@@ -58,6 +62,8 @@ struct
 module SuperGraphAnalysis : TAnalysis = functor (Absenv_v : AbsEnvGenerique) -> functor (Ir_v : IR)-> functor (Stubfunc_v : Stubfunc) ->
 struct
     module GraphIR = My_Graph (Absenv_v) (Ir_v) (Stubfunc_v)
+ 
+    let parsed_func = Hashtbl.create 100
 
     let launch_analysis program_file func_name  = 
         let channel = open_in_bin program_file in
@@ -66,7 +72,7 @@ struct
         let () = close_in channel in 
         let list_funcs = raw_program.functions in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] dir (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) in
+        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] dir (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
         flush Pervasives.stdout
 
 end ;;

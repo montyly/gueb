@@ -33,7 +33,7 @@ struct
             true,(restore_esp vsa),ha,hf
         with                        
             AbsEnv.ERROR -> 
-                let _ = Printf.printf "Error on png_free? \n" in 
+                let () = Printf.printf "Error on png_free? \n" in 
                 true,(restore_esp vsa),ha,hf
 
     let call_png_destroy vsa ha hf addr func_name call_number backtrack  =
@@ -48,7 +48,7 @@ struct
             true,(restore_esp vsa),ha,hf
         with                        
             AbsEnv.ERROR -> 
-                let _ = Printf.printf "Error on png_destroy? \n" in 
+                let () = Printf.printf "Error on png_destroy? \n" in 
                 true,(restore_esp vsa),ha,hf
 
     let stub addr_call vsa ha hf number_init addr func_name call_number backtrack  =
@@ -75,7 +75,7 @@ struct
             let new_chunk = (Absenv_v.init_vs_chunk ( !number_chunk) 0 backtrack) in
             let vsa = Absenv_v.set_value_string vsa "eax" new_chunk in
             let ha=(Absenv_v.init_chunk !number_chunk 0 backtrack)::ha  in
-            let _ = number_chunk:=!number_chunk+1 in
+            let () = number_chunk:=!number_chunk+1 in
             true,(restore_esp vsa),ha,hf
         with                        
             _ -> 
@@ -119,7 +119,7 @@ struct
             let vsa = Absenv_v.set_value vsa third_arg new_chunk in
             (* We add a the new chunk in ha *)
             let ha=(Absenv_v.init_chunk !number_chunk 0 backtrack)::ha  in
-            let _ = number_chunk:=!number_chunk+1 in
+            let () = number_chunk:=!number_chunk+1 in
             (* the first boolean means to the caller that the function was stubbed *)
             true,vsa,ha,hf
         with                        

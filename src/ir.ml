@@ -1,6 +1,9 @@
-open Absenv;;
-open Program_piqi;;
-open Program_piqi;;
+open Absenv
+open Program_piqi
+open Function_
+open Node
+open Block
+open Block_relation
 
 module type IR = functor (Absenv_v : AbsEnvGenerique) ->
 sig 
@@ -467,12 +470,12 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
              *  for each value a2
              *      a3=a1 or a2
              * *)            
-            | And -> 
+            | Or -> 
                 let arg0=arg_to_string (ir.arg0) in
                 let arg1=arg_to_string (ir.arg1) in
                 let arg2=arg_to_string (ir.arg2) in
                 if(arg0=arg1) then Absenv_v.set_value_string abs arg2 (Absenv_v.get_value_string abs arg0) (* or with himself*)
-                else Absenv_v.set_value_string abs arg2 (Absenv_v.and_op (Absenv_v.get_value_string abs arg0) (Absenv_v.get_value_string abs arg1))
+                else Absenv_v.set_value_string abs arg2 (Absenv_v.or_op (Absenv_v.get_value_string abs arg0) (Absenv_v.get_value_string abs arg1))
             (*
              * str a1,,a3
              *      a3=a1
@@ -525,13 +528,13 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 let vals_arg0 =
                     let f x =
                         let new_abs,vals = Absenv_v.get_value_create (!abs_ref) x number_init state in
-                        let _ = abs_ref := new_abs in
+                        let () = abs_ref := new_abs in
                         vals
                     in  List.map f names 
                 in
                 let abs=(!abs_ref) in
                 if (List.length vals_arg0>15) then (* too many values, better to put TOP *)
-                        let _ = Printf.printf "Number ldm max reach\n" in
+                        let () = Printf.printf "Number ldm max reach\n" in
                          Absenv_v.set_value_string abs arg2 (Absenv_v.top_value ())
                 else if (List.length vals_arg0>0) then
                     let rec merge_vals_rec vals l =
@@ -596,7 +599,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 let val2 =Absenv_v.get_value_string abs arg1 in 
                 let val_bsh = Absenv_v.bsh val1 val2 in 
                 Absenv_v.set_value_string abs arg2 val_bsh
-            | _ -> abs;;
+            | Jcc | Nop | Mul | Div | Undef | Unknow  -> abs;;
 
     (* 
      * Check for uaf on stm or ldm

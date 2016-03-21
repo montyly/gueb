@@ -1,8 +1,10 @@
-open Absenv;;
-open Ir ;;
-open Unix;;
-open Stubfunc;;
-open Program_piqi;;
+open Absenv
+open Ir 
+open Unix
+open Stubfunc
+open Program_piqi
+open Program_piqi
+open Function_
 
 (*
  * Debug fonction
@@ -139,7 +141,7 @@ struct
         let l =List.map 
             (fun ((addr,it),f,n) ->
                 let ret = ((!p),(addr,it),f,n) in
-                let _ = p:=(!p)^(Printf.sprintf "%d%d" (addr/0x100) it) in
+                let () = p:=(!p)^(Printf.sprintf "%d%d" (addr/0x100) it) in
                 ret 
             ) l
         in
@@ -163,8 +165,6 @@ struct
      * print to dot format
      *)
     let print_uaf_dot filename alloc free use =
-  (*      let filename2 = filename^"-new.dot" in
-        let () = export_call_graph_uaf filename2 print_site_dot print_site_arc_dot alloc free use in*)
         let oc = open_out filename in
         let remove_type (a,b) = a in
         let alloc = List.map remove_type alloc in
@@ -173,17 +173,17 @@ struct
         let alloc = add_p ( alloc) in
         let free = List.map (fun x -> add_p ( x)) free in
         let use = List.map (fun x -> add_p ( x)) use in
-        let _ = Printf.fprintf oc "strict digraph g {\n" in
-        let _ = Printf.fprintf oc "%s\n" (pp_uaf alloc) in
-        let _ = Printf.fprintf oc "%s\n" (pp_uafs free) in
-        let _ = Printf.fprintf oc "%s\n" (pp_uafs use) in
-        let _ = Printf.fprintf oc "%s\n" (pp_uaf_label (List.tl alloc)) in
-        let _ = Printf.fprintf oc "%s\n" (pp_uaf_label (List.concat (List.map (fun x -> List.tl x )free))) in
-        let _ = Printf.fprintf oc "%s\n" (pp_uaf_label (List.concat (List.map (fun x -> List.tl x ) use))) in
-        let _ = Printf.fprintf oc "%s\n" (pp_alloc (List.hd alloc (*(List.length alloc)-1*))) in
-        let _ = Printf.fprintf oc "%s\n" (pp_free (List.map ( fun x ->(List.hd x (*(List.length x)-1*)) ) free)) in
-        let _ = Printf.fprintf oc "%s\n" (pp_use (List.map ( fun x ->(List.hd x (*(List.length x)-1*)) ) use)) in
-        let _ = Printf.fprintf oc "}\n" in
+        let () = Printf.fprintf oc "strict digraph g {\n" in
+        let () = Printf.fprintf oc "%s\n" (pp_uaf alloc) in
+        let () = Printf.fprintf oc "%s\n" (pp_uafs free) in
+        let () = Printf.fprintf oc "%s\n" (pp_uafs use) in
+        let () = Printf.fprintf oc "%s\n" (pp_uaf_label (List.tl alloc)) in
+        let () = Printf.fprintf oc "%s\n" (pp_uaf_label (List.concat (List.map (fun x -> List.tl x )free))) in
+        let () = Printf.fprintf oc "%s\n" (pp_uaf_label (List.concat (List.map (fun x -> List.tl x ) use))) in
+        let () = Printf.fprintf oc "%s\n" (pp_alloc (List.hd alloc (*(List.length alloc)-1*))) in
+        let () = Printf.fprintf oc "%s\n" (pp_free (List.map ( fun x ->(List.hd x (*(List.length x)-1*)) ) free)) in
+        let () = Printf.fprintf oc "%s\n" (pp_use (List.map ( fun x ->(List.hd x (*(List.length x)-1*)) ) use)) in
+        let () = Printf.fprintf oc "}\n" in
         close_out oc
     
 
@@ -199,12 +199,6 @@ struct
         let rec walk values bb_alloc bb_free bb_use = 
             match values with
             | (y,key)::tl ->
-(*                let () = 
-                    begin
-                        let () = Printf.printf "-------\n" in let _ = check y alloc_addr alloc_it in Printf.printf "#######\n"
-                    end
-                in*)
-(*                let () = Printf.printf "Key %d call_n %d\n" key alloc_call_n in*)
                 let () = if (key = alloc_call_n && check y alloc_addr alloc_it) then
                     Printf.fprintf oc "%03d%d[style=filled,fillcolor=\"mediumspringgreen\",hack=2]\n" alloc_call_n  y.addr_bb
                 in
@@ -329,108 +323,10 @@ struct
                     Printf.fprintf oc "%03d%d[style=filled,fillcolor=\"yellow\",hack=5]\n" key  x.addr_bb ) nodes_free_use
         with Not_found -> Printf.printf "Error, node not found during subgraph extraction\n"
 
-    let print_values dir values calls =
- (*       let txt = Printf.sprintf "strict digraph g {\n" in
-        let pp_val_bb bb = Printf.sprintf "0x%x" bb.addr_bb in
-        let pp_val_node n = Printf.sprintf "0x%x" n.addr in
-        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( (site list *  ((site list) list) * ((site list) list)) ) list ) Hashtbl.t ))  in
-        (* first ordone result by alloc, not by free *)
-        let _ =
-            Hashtbl.iter 
-                (fun ((chunk_id,chunk_type),free) (alloc,use) ->
-                    let key = chunk_id,chunk_type in
-                    try
-                        let elems=Hashtbl.find sg_uaf_by_alloc key in
-                        Hashtbl.replace sg_uaf_by_alloc key ((alloc,free,use)::elems)
-                    with
-                    Not_found -> Hashtbl.add sg_uaf_by_alloc key [alloc,free,use]
-                ) sg_uaf in
-      (*  let print_values_dot_stream_node oc n =
-            let prev_addr = ref 0 in
-            let access_heap= List.fold_left (fun x y -> Printf.sprintf "%s %s" x (Absenv_v.pp_chunk y)) ""  (Ir_v.access_heap n.stmt n.vsa) in
-            let () = if(!prev_addr>0)
-                then
-                Printf.fprintf oc "%d -> %d\n%d[label=\"%s AccessHeap %s HF %s\"]\n" (!prev_addr) n.addr n.addr (pp_val_node n) access_heap "empty"
-            else
-                Printf.fprintf oc "%d[label=\"%s AccessHeap %s HF %s\"]\n" n.addr (pp_val_node n)  access_heap "empty"
-            in prev_addr := n.addr 
-        in *)
-        let print_values_dot_stream_bb bb counter =
-            let access_heap = List.map (fun x -> Ir_v.access_heap x.stmt x.vsa) bb.nodes in
-            let access_heap = List.concat access_heap in
-            let access_heap = List.map (fun x -> Absenv_v.pp_chunk x) access_heap in
-            let access_heap = List.sort_uniq String.compare access_heap in
-            let access_heap = 
-                if(List.length access_heap > 0)
-                then
-                     Printf.sprintf "\\nAccessHeap %s" (List.fold_left (fun x y -> Printf.sprintf "%s %s" x y) "" access_heap) 
-                else Printf.sprintf "" 
-            in
-            let txt = Printf.sprintf "%03d%d[label=\"%d : %x%s\"]\n" (counter) bb.addr_bb counter bb.addr_bb access_heap in
-            List.fold_left (fun x y -> Printf.sprintf "%s%03d%d -> %03d%d\n" x (counter) bb.addr_bb (counter)  y.addr_bb) txt bb.sons
-        in
-        (* order bb by functions *)
-        let tbl = Hashtbl.create 200 in
-        let () = List.iter 
-            (fun (y,key) -> (* key is the number of the function *) 
-                    try
-                        let elems=Hashtbl.find tbl key in
-                        Hashtbl.replace tbl key (y::elems)
-                    with
-                    Not_found -> Hashtbl.add tbl key [y]
-            ) values in
-        let txt = Hashtbl.fold
-            (fun key l prev ->
-                let txt = Printf.sprintf "%ssubgraph cluster_%d { \n" prev (key)  in
-                let txt = List.fold_left (fun x y -> Printf.sprintf "%s%s" x (print_values_dot_stream_bb y key)) txt l in
-                Printf.sprintf "%s}\n" txt
-            ) tbl txt in
-        let txt = List.fold_left (
-            fun x (ori,dst,ori_n,dst_n) -> 
-                Printf.sprintf "%s%03d%d -> %03d%d\n" x ori_n ori.addr_bb dst_n dst.addr_bb
-                ) txt calls in
-(*        Hashtbl.iter
-            (fun ((chunk_id,chunk_type),free) (alloc,use) ->
-                let str =       
-                    match chunk_type with
-                    | 0 -> "chunk"
-                    | 1 -> "init_val"
-                    | _ -> "unknow"
-                in
-                let oc = open_out (Printf.sprintf "%s/uaf-%s%d-details.dot" dir str  chunk_id) in
-                let () = Printf.fprintf oc "%s" txt in
-                let () = subgraph_extraction oc values calls chunk_id chunk_type alloc free use in
-                let () = print_uaf_values oc values calls chunk_id chunk_type alloc free use in
-                let _ = Printf.fprintf oc "}\n" in
-                close_out oc
-        ) sg_uaf*)
-        Hashtbl.iter 
-            (fun (chunk_id,chunk_type) elems -> 
-                let str =       
-                    match chunk_type with
-                    | 0 -> "chunk"
-                    | 1 -> "init_val"
-                    | _ -> "unknow"
-                in 
-                let n = ref 0 in
-                List.iter 
-                    (fun (alloc,free,use) ->
-                        let () = n := (!n)+1 in
-                        let oc = open_out (Printf.sprintf "%s/uaf-%s%d-%ddetails.dot" dir str  chunk_id (!n)) in
-                        let () = Printf.fprintf oc "%s" txt in
-                        let () = subgraph_extraction oc values calls chunk_id chunk_type alloc free use in
-                        let () = print_uaf_values oc values calls chunk_id chunk_type alloc free use in
-                        let _ = Printf.fprintf oc "}\n" in
-                        close_out oc
-                ) elems
-        ) sg_uaf_by_alloc 
-        *)
-    ()
-
     let print_graph_dot dir values calls =
         let txt = Printf.sprintf "strict digraph g {\n" in
-        let pp_val_bb bb = Printf.sprintf "0x%x" bb.addr_bb in
-        let pp_val_node n = Printf.sprintf "0x%x" n.addr in
+(*        let pp_val_bb bb = Printf.sprintf "0x%x" bb.addr_bb in
+        let pp_val_node n = Printf.sprintf "0x%x" n.addr in*)
         let print_values_dot_stream_bb bb counter =
             let access_heap = List.map (fun x -> Ir_v.access_heap x.stmt x.vsa) bb.nodes in
             let access_heap = List.concat access_heap in
@@ -486,64 +382,6 @@ struct
         let () = Printf.fprintf oc "}\n" in
         close_out oc
 
-
-
-(*
-    let print_sg_values dir_output =
-        Hashtbl.iter
-            (fun ((chunk_id,chunk_type),free) (alloc,use) ->
-                print_uaf_values "/tmp/test" (!saved_values) (!saved_call) chunk_id chunk_type alloc free use
-        ) sg_uaf
-*)
-
-
-    let print_sg_exp dir_output  =
-    ()
-    (*
-        if (Hashtbl.length sg_uaf) == 0 then ()
-        else
-        let () =
-        try 
-            Unix.mkdir dir_output 0o777 
-        with
-            _ -> ()
-        in
-        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( (site list *  ((site list) list) * ((site list) list)) ) list ) Hashtbl.t ))  in
-        (* first ordone result by alloc, not by free *)
-        let _ =
-            Hashtbl.iter 
-                (fun ((chunk_id,chunk_type),free) (alloc,use) ->
-                    let key = chunk_id,chunk_type in
-                    try
-                        let elems=Hashtbl.find sg_uaf_by_alloc key in
-                        Hashtbl.replace sg_uaf_by_alloc key ((alloc,free,use)::elems)
-                    with
-                    Not_found -> Hashtbl.add sg_uaf_by_alloc key [alloc,free,use]
-                ) sg_uaf in
-        let _ = Printf.printf "Results, uaf found : \n\n" in
-        Hashtbl.iter 
-            (fun (chunk_id,chunk_type) elems -> 
-                let str =       
-                begin 
-                    match chunk_type with
-                    | 0 -> "chunk"
-                    | 1 -> "init_val"
-                    | _ -> "unknow"
-                end
-                in
-                let n = ref 0 in
-                let _ = List.iter (fun (alloc,free,use) -> print_uaf_dot (let _ = n:=!n+1 in Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  alloc free use ) elems in
-                let _ = Printf.printf "%s%d is an uaf :\n" str chunk_id in
-                let _ = List.iter (fun (alloc,free,use) ->
-                    let alloc_str=Absenv_v.pp_state alloc in
-                    let free_str=List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" free in  
-                    let use_str= List.fold_left (fun x y -> (Absenv_v.pp_state y)^"\n\t"^x) "" use in    
-                    Printf.printf "Allocated in \n\t%s\nfreed in \n\t%s\nused in \n\t%s\n--------------------------------------\n"        
-                    alloc_str free_str use_str ) elems in
-                Printf.printf "#################################\n" 
-            ) sg_uaf_by_alloc ;;
-    *)
-
     let print_sg_details sg values dir_output = 
         if (Hashtbl.length sg) == 0 then ()
         else
@@ -592,7 +430,7 @@ struct
     let rec connect_bbs bbs connexions =
         match connexions with
         | [] -> List.rev bbs
-        | hd :: tl ->  let _ =connect_bb bbs hd  in connect_bbs bbs tl ;;
+        | hd :: tl ->  let () =connect_bb bbs hd  in connect_bbs bbs tl ;;
 
     let rec update_type nodes addrs type_node=
         match addrs with
@@ -600,29 +438,16 @@ struct
         | tl::hd ->
                 List.iter (fun x -> 
                         match x.addr with
-                        | _ when x.addr=tl -> let _ = x.type_node<-(lor) x.type_node type_node in  ()
+                        | _ when x.addr=tl -> let () = x.type_node<-(lor) x.type_node type_node in  ()
                         | _ -> ()
                         ) nodes;
                 update_type nodes hd type_node;;
 
     let update_call_retn nodes call_retn =
         let (call,retn)=call_retn in
-        let _ =update_type nodes call type_NODE_CALL in
+        let () =update_type nodes call type_NODE_CALL in
         update_type nodes retn type_NODE_RETN;;
 
-(*
-    let update_malloc_free_protobuf list_nodes malloc_addr free_addr =
-        let _ = List.iter (fun x -> Printf.printf "Alloc %x\n" x ) malloc_addr in
-        List.iter 
-            (fun y -> 
-                match Ir_v.get_value_jump y.stmt y.vsa with
-                | None -> ()
-                | Some a ->
-                    let _ = Printf.printf "Call %x\n" a in
-                    if (List.exists (fun x-> x=a) malloc_addr) then let _ = Printf.printf "######### Alloc\n" in (y.type_node <- (lor) y.type_node type_NODE_MALLOC);
-                    if (List.exists (fun x-> x=a) free_addr) then (y.type_node <- (lor) y.type_node type_NODE_FREE);
-            ) list_nodes;;           
-*)
 
     let find_eip nodes eip = 
         try
@@ -645,7 +470,7 @@ struct
         in create_bbs_rec list_bb list_nodes [];;
                        
     let create_bb addr =  
-            let _ = number_bbs:= (!number_bbs)+1 in
+            let () = number_bbs:= (!number_bbs)+1 in
             {uniq_id= !number_bbs;addr_bb=addr;sons=[];sons_kosaraju=[];fathers=[];fathers_kosaraju=[];unloop=0;is_done=false;nodes=[]}
  
     (** Export **)
@@ -654,24 +479,23 @@ struct
     let print_bb_dot stream bb =
         let print_link n0 n1  = Printf.fprintf stream "%d -> %d;\n" n0.uniq_id n1.uniq_id in
         let print_bb n = Printf.fprintf stream "%d[label=\"0x%x:%d (%d)\"];\n" n.uniq_id (n.addr_bb/0x100) n.unloop n.uniq_id in
-        let _ = print_bb bb in
-        let _ = List.iter (fun x -> print_link bb x) bb.sons in 
-        ()
+        let () = print_bb bb in
+        List.iter (fun x -> print_link bb x) bb.sons 
     
     let print_bbs_dots_stream stream bbs=
-        let _ = Printf.fprintf stream "digraph g {\n" in
+        let () = Printf.fprintf stream "digraph g {\n" in
         let rec rec_print_bb_dots bbs =
             match bbs with
             | [] -> ()
-            | hd::tl -> let _ = print_bb_dot stream hd in
+            | hd::tl -> let () = print_bb_dot stream hd in
                         rec_print_bb_dots tl
         in 
-        let _ = rec_print_bb_dots bbs in
+        let () = rec_print_bb_dots bbs in
         Printf.fprintf stream "}\n"
     
     let print_bbs_dots filename bbs = 
         let oc = open_out filename in
-        let _ = print_bbs_dots_stream oc bbs in
+        let () = print_bbs_dots_stream oc bbs in
         close_out oc
     
     (** Manipulate **)
@@ -709,7 +533,7 @@ struct
     let new_node node = {addr=node.addr;stmt=node.stmt; type_node=node.type_node;init=node.init;vsa=node.vsa;ha=node.ha;hf=node.hf};;
    
     let new_bb bb unloop= 
-        let _ = number_bbs:=(!number_bbs)+1 in
+        let () = number_bbs:=(!number_bbs)+1 in
         {uniq_id= !number_bbs;addr_bb=bb.addr_bb;sons=bb.sons;sons_kosaraju=bb.sons_kosaraju;fathers=bb.fathers;fathers_kosaraju=bb.fathers_kosaraju;unloop=unloop;is_done=false;nodes= []};;
     
     
@@ -781,33 +605,33 @@ struct
         List.iter (fun x -> List.iter (fun y -> y.fathers<-(x::y.fathers)) x.sons) nodes;;
     
     let reset_fathers nodes=
-        let _ = remove_all_fathers nodes in
-        let _ = add_fathers_from_son nodes in
+        let () = remove_all_fathers nodes in
+        let () = add_fathers_from_son nodes in
         List.iter (fun x -> x.fathers<-remove_dupplicate x.fathers) nodes ;; 
     
     let rec fix_link_nodes new_nodes nodes nodes2 entry stop=
         match new_nodes with 
         | [] -> ()
         | tl::hd ->
-            let _ = fix_son_node tl nodes nodes2 entry stop in
+            let () = fix_son_node tl nodes nodes2 entry stop in
             fix_link_nodes hd nodes nodes2 entry stop ;;
     
     let copy_remove_arc entry stop nodes number_unloop= 
         let rec copy_remove_arc_rec entry stop nodes stack n=
             if n==0 then 
-                let _ = fix_link_nodes nodes nodes nodes entry stop in
+                let () = fix_link_nodes nodes nodes nodes entry stop in
                 stack
             else
-                let _ = hack_number:=!hack_number+1 in
+                let () = hack_number:=!hack_number+1 in
                 let new_nodes=List.map (fun x -> new_bb x number_unloop ) nodes in
-                let _ = fix_link_nodes new_nodes nodes new_nodes entry stop in
+                let () = fix_link_nodes new_nodes nodes new_nodes entry stop in
                 let new_entry=(find_node_in_nodes entry new_nodes) in
                 let new_stop=(find_node_in_nodes stop new_nodes) in
                 match new_entry,new_stop with
                 | None,_ | _,None ->stack
                 | Some a, Some b-> 
-                    let _ = stop.sons<-add_ori stop.sons [a] in
-                    let _ = a.fathers<-add_ori a.fathers [stop] in
+                    let () = stop.sons<-add_ori stop.sons [a] in
+                    let () = a.fathers<-add_ori a.fathers [stop] in
                     copy_remove_arc_rec a b new_nodes (new_nodes::stack) (n-1)
         in copy_remove_arc_rec entry stop nodes [nodes] number_unloop;;
     
@@ -854,7 +678,7 @@ struct
         in
         let retour=unloop_sc_rec sc [] in 
         let concat_list=List.concat retour in
-        let _ =  reset_fathers concat_list in
+        let () =  reset_fathers concat_list in
         retour;;
     
     
@@ -869,7 +693,7 @@ struct
     
     (* Remove path kosaraju *)
     let remove_path stack node=
-        let _  = List.iter (fun x -> remove_on_one_node_father x node.addr_bb node.unloop) stack in
+        let ()  = List.iter (fun x -> remove_on_one_node_father x node.addr_bb node.unloop) stack in
         List.filter (fun x -> x.addr_bb!=node.addr_bb || x.unloop!=node.unloop) stack;;
     
     (* Remove path from stack *)
@@ -920,7 +744,7 @@ struct
             if ((List.length start_node.sons_kosaraju)==0) then (start_node::stack)
             else let leafs=dfs start_node in
                  let leafs_clean=clean_leafs (List.rev leafs) [] leafs in
-                 let _ = List.iter (fun x -> List.iter (fun y -> remove_on_one_node_son y x.addr_bb x.unloop )  list_nodes ) leafs_clean in
+                 let () = List.iter (fun x -> List.iter (fun y -> remove_on_one_node_son y x.addr_bb x.unloop )  list_nodes ) leafs_clean in
                  create start_node ((leafs_clean)@stack)
           in create start_node [];;
     
@@ -984,7 +808,7 @@ struct
 (*            let () = Printf.printf "Number unloop left %d \n" number_unloop in*)
             let n_unloop=(number_unloop) in
             if number_unloop<=0 then
-                let _ = List.iter (fun x -> x.unloop <- x.unloop+n_unloop) list_nodes in
+                let () = List.iter (fun x -> x.unloop <- x.unloop+n_unloop) list_nodes in
                 let new_nodes = list_nodes in
                 ((n_unloop,new_nodes)::stack)
             else
@@ -998,8 +822,8 @@ struct
         try
             let (_,nodes_n1) = List.find (fun (n1,nodes) -> n1=(n+1)) list_news_nodes in
             let entry_n1 = List.map (fun x -> find_node_no_unloop x nodes_n1) entry in
-            let _ = List.iter (fun x -> x.sons <- entry_n1@x.sons) leafs_n in
-            let _ = List.iter (fun x -> x.fathers <- leafs_n) entry_n1 in
+            let () = List.iter (fun x -> x.sons <- entry_n1@x.sons) leafs_n in
+            let () = List.iter (fun x -> x.fathers <- leafs_n) entry_n1 in
             nodes
         with
             Not_found -> nodes
@@ -1008,14 +832,14 @@ struct
         let new_list_nodes = copy_nodes list_nodes number_unloop in
         let new_list_nodes = List.rev (new_list_nodes) in
         let () = fix_sons_fathers new_list_nodes in
-        let sc = List.concat (List.map (fun (_,n) -> n) new_list_nodes) in
+       (* let sc = List.concat (List.map (fun (_,n) -> n) new_list_nodes) in*)
         let list_nodes = List.map (fun  x ->  fix_entry_leaf x new_list_nodes entry_point leafs) new_list_nodes in
         List.concat list_nodes
     
     let rec unrool head list_nodes number_unloop =
         let select_best_entry l = List.fold_left (fun x y -> if ( List.length x.fathers > List.length y.fathers) then x else y ) (List.hd l) (List.tl l) in
         let exist l = List.find_all (fun x -> List.exists (fun y -> y.addr_bb=x.addr_bb) list_nodes) l in
-        let () = List.iter (fun x -> let _ = x.sons_kosaraju<-(exist x.sons) in x.fathers_kosaraju<-(exist x.fathers)) list_nodes in
+        let () = List.iter (fun x -> let () = x.sons_kosaraju<-(exist x.sons) in x.fathers_kosaraju<-(exist x.fathers)) list_nodes in
         let scs = kosaraju head list_nodes in
         let unrool_sc sc head = 
         begin
@@ -1025,7 +849,7 @@ struct
             let entry_point = [select_best_entry all_entry_point] in (* quand on a plusieurs entry_point, on en selectionne qu'un pour le reste ? code a changer, vu que par la suite on pouvait en avoir plusieurs ;) TODO *)
             let leafs = List.map (fun x -> (x,create_leafs sc x)) entry_point in (* leafs is list of : entry_point -> leaf*) 
             let sc = unrool (List.hd entry_point) sc number_unloop in
-            let _ = List.iter (fun x -> let _ = x.sons_kosaraju<-x.sons in x.fathers_kosaraju<-x.fathers) list_nodes in
+            let () = List.iter (fun x -> let () = x.sons_kosaraju<-x.sons in x.fathers_kosaraju<-x.fathers) list_nodes in
             let ret = expanse_loop sc entry_point (List.concat (List.map (fun (x,y) -> y) leafs)) number_unloop  in
             ret
         end
@@ -1143,7 +967,7 @@ struct
     let number_chunk=ref 0;;
     
     let init_value b state func_name=
-        let _ = b.is_done<-false in
+        let () = b.is_done<-false in
         let rec init_value_rec nodes =
         match nodes with
         | [] -> ()
@@ -1308,7 +1132,7 @@ struct
                      | Some (stmt,chunks,addr) ->
                          let _,b,_ = (List.hd backtrack) in
                          let state = (addr,b,!current_call)::backtrack in
-                         let _ = List.iter (fun c -> add_uaf c [state]) chunks in
+                         let () = List.iter (fun c -> add_uaf c [state]) chunks in
                          Printf.printf "Uaf find :%s\n" ((let a,it = addr in Printf.sprintf "%x:%d " a it )^(Ir_v.print_stmt stmt)^(Absenv_v.pp_he chunks) )
              ) uaf_result;
         if (List.exists (
@@ -1377,16 +1201,16 @@ struct
         let rec value_analysis_nodes_rec n fathers bb_ori=
            
              (* Put init values *)
-            let _ = n.vsa<-Absenv_v.update n.init (merge_father fathers []) in
+            let () = n.vsa<-Absenv_v.update n.init (merge_father fathers []) in
             (* Merge values from fathers *)
             let (ha,hf) = merge_fathers_heap fathers n.ha n.hf in
             (* Merge chunk values *)
-            let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+            let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
             let () = n.hf<-hf in
-            let _ =
+            let () =
                 if(show_values) 
                     then
-                    let _ = Printf.printf "Func transfer node %s\n %s" func_name (pp_nodes_value [n] bb_ori.unloop) in
+                    let () = Printf.printf "Func transfer node %s\n %s" func_name (pp_nodes_value [n] bb_ori.unloop) in
                     flush Pervasives.stdout 
             in
 (*            if ((land) n.type_node type_NODE_FREE)>0 the)
@@ -1413,7 +1237,7 @@ struct
                             number_chunk:=!number_chunk+1 in
                         let () = if(verbose) then Printf.printf "Call Free %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack )) in
                         try 
-                            let _ =  n.vsa <- Absenv_v.restore_esp n.vsa in
+                            let () =  n.vsa <- Absenv_v.restore_esp n.vsa in
                             let val_esp=Absenv_v.get_value_string n.vsa "esp" in
                             let names=Absenv_v.values_to_names val_esp in
                             let vals=List.map (fun x -> Absenv_v.get_value n.vsa x) names in
@@ -1423,7 +1247,7 @@ struct
                                 match df with
                                 | [] ->     
                                     let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) show_free  in
-                                    let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                    let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                     n.hf<-hf
                                 | _ -> 
                                     List.iter (
@@ -1433,7 +1257,7 @@ struct
                             with
                                 Not_found -> 
                                     let (ha,hf)=Absenv_v.free n.ha n.hf vals_filter (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) show_free in
-                                    let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                    let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                     n.hf<-hf
                         with 
                             AbsEnv.ERROR ->
@@ -1453,8 +1277,8 @@ struct
                     let is_stub, vsa,ha,hf=Stubfunc_v.stub a n.vsa n.ha n.hf number_chunk (n.addr,bb_ori.unloop) func_name (!current_call) backtrack  in
                     if is_stub 
                         then 
-                            let _ = n.vsa<-vsa in
-                            let _ = n.ha<-ha in
+                            let () = n.vsa<-vsa in
+                            let () = n.ha<-ha in
                             n.hf<-hf
                     else
                         try
@@ -1462,7 +1286,7 @@ struct
                             if (List.exists (fun (addr,x,n) -> x=func_name) backtrack) 
                                 then
                                 let () = if (verbose) then Printf.printf "Rec %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack ))  in
-                                let _ =flush Pervasives.stdout in
+                                let () = flush Pervasives.stdout in
                                 let vsa = Absenv_v.restore_esp n.vsa in
                                 n.vsa <- ignore_call vsa number_chunk (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack)
                             else
@@ -1475,58 +1299,58 @@ struct
                                         let () = saved_call := ((bb_ori.addr_bb,bb_ori.unloop),func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         current_call := (!number_call)
                                 in
-                                let _ = List.iter (fun x -> init_value x (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) func_name) func_bbs in
-                                let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).init<-n.vsa in
-                                let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).ha<-n.ha in
-                                let _ = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).hf<-n.hf in
+                                let () = List.iter (fun x -> init_value x (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) func_name) func_bbs in
+                                let () = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).init<-n.vsa in
+                                let () = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).ha<-n.ha in
+                                let () = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).hf<-n.hf in
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                    let _ = flush Pervasives.stdout in
+                                    let () = flush Pervasives.stdout in
                                     let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                    let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
+                                    let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
                                     let () = if(flow_graph) then current_call:=number_call_prev in
-                                    let _ = score_childs:=(||) (!score_childs) score in
+                                    let () = score_childs:=(||) (!score_childs) score in
                                     try
-                                        let _ = n.vsa<-Absenv_v.filter_esp_ebp vsa verbose in
-                                        let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                        let () = n.vsa<-Absenv_v.filter_esp_ebp vsa verbose in
+                                        let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                         n.hf<-hf
                                     with
                                         | AbsEnv.ERROR -> 
-                                            let _ = if (verbose) then 
-                                                let _ = Printf.printf "Func transfer node Error Filter esp / ebp \n %s" (pp_nodes_value [n] bb_ori.unloop) in
-                                                let _ = Printf.printf "\n---\n" in
-                                                let _ = Printf.printf "%s\n" (Absenv_v.pp_absenvs vsa) in 
+                                            let () = if (verbose) then 
+                                                let () = Printf.printf "Func transfer node Error Filter esp / ebp \n %s" (pp_nodes_value [n] bb_ori.unloop) in
+                                                let () = Printf.printf "\n---\n" in
+                                                let () = Printf.printf "%s\n" (Absenv_v.pp_absenvs vsa) in 
                                                 flush Pervasives.stdout 
                                             in
-                                            let _ = n.vsa <- restore_stack_frame n.vsa vsa in
-                                            let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
-                                            let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                            let () = n.vsa <- restore_stack_frame n.vsa vsa in
+                                            let () = n.vsa <- Absenv_v.restore_esp n.vsa in
+                                            let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                             n.hf<-hf
                                         |_ -> Printf.printf "WTF \n";
                                 with
                                     | NOT_RET (vsa,ha,hf,score)  ->
-                                        let _ = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                        let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
+                                        let () = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
+                                        let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
                                         let () = if(flow_graph) then current_call:=number_call_prev in
-                                        let _ = score_childs:=(||) (!score_childs) score in
-                                        let _ = if (verbose) then 
-                                            let _ = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n] bb_ori.unloop) in
-                                            let _ = Printf.printf "\n---\n" in
+                                        let () = score_childs:=(||) (!score_childs) score in
+                                        let () = if (verbose) then 
+                                            let () = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n] bb_ori.unloop) in
+                                            let () = Printf.printf "\n---\n" in
                                             Printf.printf "%s\n" (Absenv_v.pp_absenvs vsa) 
                                         in
-                                        let _ = flush Pervasives.stdout  in
-                                        let _ = n.vsa <- restore_stack_frame n.vsa vsa in
-                                        let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
-                                        let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                        let () = flush Pervasives.stdout  in
+                                        let () = n.vsa <- restore_stack_frame n.vsa vsa in
+                                        let () = n.vsa <- Absenv_v.restore_esp n.vsa in
+                                        let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                         n.hf<-hf;                                               
                                    | NOT_RET_NOT_LEAF ->
                                         let () = if (verbose) then Printf.printf "End call (NOT RET NOT LEAF) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
-                                        let _ = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
+                                        let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
                                         let () = if(flow_graph) then current_call:=number_call_prev in
-                                        let _ = n.vsa <- restore_stack_frame n.vsa vsa in
-                                        let _ = n.vsa <- Absenv_v.restore_esp n.vsa in
-                                        let _ = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
+                                        let () = n.vsa <- restore_stack_frame n.vsa vsa in
+                                        let () = n.vsa <- Absenv_v.restore_esp n.vsa in
+                                        let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
                                         n.hf<-hf;  
                         with
                             Not_found ->
@@ -1546,10 +1370,10 @@ struct
                     let fathers=ref ((List.map (fun x -> List.nth x.nodes ((List.length x.nodes)-1)) fathers_filter )) in
                     let () = List.iter (
                         fun x -> 
-                            let _ =  value_analysis_nodes_rec x (!fathers) bb  in
+                            let () =  value_analysis_nodes_rec x (!fathers) bb  in
                             fathers:=[x];
                         ) bb.nodes in
-                    let _ = bb.is_done<-true in
+                    let () = bb.is_done<-true in
                    (* let () =  
                         Remove this for now
                         if(details_values)
@@ -1560,7 +1384,7 @@ struct
                     let () = visit_after bb in
                     List.iter value_analysis_rec bb.sons
         in
-        let _ = value_analysis_rec func_eip in
+        let () = value_analysis_rec func_eip in
         let retn_node=List.filter (fun x -> ((land) x.type_node type_NODE_RETN)>0) (List.concat (List.map (fun x -> x.nodes) func_bbs)) in
         let retn_bb=List.filter (fun bb -> List.exists (fun x-> ((land) x.type_node type_NODE_RETN)>0 ) bb.nodes) func_bbs in
         let () = 
@@ -1629,7 +1453,7 @@ struct
                     let () = fathers:=[x] in
                     x 
                 ) (List.hd bb.nodes) (List.tl bb.nodes) in
-            let _ = bb.is_done<-true in
+            let () = bb.is_done<-true in
             let retn_bb=List.filter (fun bb -> List.exists (fun x-> ((land) x.type_node type_NODE_RETN)>0 ) bb.nodes) func_bbs in
             let () = 
                 if((flow_graph) && addr_caller != 0) then 
@@ -1754,7 +1578,7 @@ struct
    
     let export_call_graph_uaf filename print_begin print_end print_node print_arc (alloc:(site*site_type) list) (free:((site*site_type) list) list) (use:((site*site_type) list) list)  =
         let oc = open_out filename in 
-        let _ = print_begin oc in
+        let () = print_begin oc in
         let () = Printf.printf "Export %s\n" filename in
         let alloc = List.rev alloc in
         let free = List.map (fun x -> List.rev x) free in 
@@ -1765,7 +1589,7 @@ struct
             let () = print_arc oc leaf.site (List.map (fun x -> x.site ) leaf.leafs) in
             List.iter (fun x -> explore x) leaf.leafs 
         in
-        let _ = explore tree  in
+        let () = explore tree  in
         let () = print_end oc  in
         close_out oc
 
@@ -1791,10 +1615,10 @@ struct
         !ret
 
     let callgraph_to_list eip calls funcs =
-        let compare bb1 bb2 = 
+       (* let compare bb1 bb2 = 
             let () = Printf.printf "Compare %x %x : %d \n" bb1.addr_bb bb2.addr_bb ( compare (bb1.addr_bb/0x100) (bb2.addr_bb/0x100))
             in compare (bb1.addr_bb) (bb2.addr_bb) 
-        in
+        in*)
         let funcs_called = List.map (fun (_,eip,_,n) -> (eip/0x100,n) ) calls in
         let func_convert (eip,bbs,name) n = (eip,List.map (fun x ->x, SITE_NORMAL ) ((*List.sort_uniq compare*) bbs), name,n)  in
         List.map (fun (eip,n) -> func_convert (find_func_eip_no_unloop eip funcs) n) ((eip,0)::funcs_called)
@@ -1803,7 +1627,7 @@ struct
 
     let create_arc_bbs bbst n = 
         let bbs = List.map (fun (bb,t) -> bb) bbst in
-        let first_bb = List.hd bbs in
+        (*let first_bb = List.hd bbs in*)
         let bbs = List.tl bbs in
         let ret = ref [] in
         let () = List.iter (fun x ->
@@ -1910,7 +1734,7 @@ struct
         let oc = open_out filename in 
         (* id_node use as index for exporting, and keeping relations between print node and arcs, addr * n -> id *)
         let id_node = Hashtbl.create 400 in
-        let _ = print_begin oc in
+        let () = print_begin oc in
         let () = Printf.printf "Export %s\n" filename in
         try
             let list_func = callgraph_to_list eip calls funcs in
@@ -1950,7 +1774,7 @@ struct
         let oc = open_out filename in 
         (* id_node use as index for exporting, and keeping relations between print node and arcs, addr * n -> id *)
         let id_node = Hashtbl.create 400 in
-        let _ = print_begin oc in
+        let () = print_begin oc in
         let () = Printf.printf "Export %s\n" filename in
             let list_func = callgraph_to_list eip calls funcs in
             let list_func = update_type_func list_func [] in
@@ -1984,7 +1808,7 @@ struct
         in
         let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( ((site*site_type) list *  (((site*site_type) list) list) * (((site*site_type) list) list)) ) list ) Hashtbl.t ))  in
         (* first ordone result by alloc, not by free *)
-        let _ =
+        let () =
             Hashtbl.iter 
                 (fun ((chunk_id,chunk_type),free) (alloc,use) ->
                     let key = chunk_id,chunk_type in
@@ -1994,7 +1818,7 @@ struct
                     with
                     Not_found -> Hashtbl.add sg_uaf_by_alloc key [alloc,free,use]
                 ) sg_uaf in
-        let _ = Printf.printf "Results, uaf found : \n\n" in
+        let () = Printf.printf "Results, uaf found : \n\n" in
         Hashtbl.iter 
             (fun (chunk_id,chunk_type) elems -> 
                 let str =       
@@ -2036,7 +1860,7 @@ struct
         let count = ref 0 in
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs  in
-            let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs in
+            let () = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs in
             let () = try
                 let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count 400 verbose show_call 0 0 0 flow_graph in
                 let () = print_g dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint in
@@ -2063,9 +1887,9 @@ struct
     let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint =
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs in
-            let _ = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
+            let () = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
             let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free  0 0 0 flow_graph  in
-            let _ = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
+            let () = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
             print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
         with
             | Not_found -> Printf.printf "Func %s : error (not found)\n" func_name

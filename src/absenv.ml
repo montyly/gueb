@@ -307,7 +307,7 @@ struct
         {base_chunk=n;size=0;type_chunk=type_chunk;state_alloc=state;state_free=[]};;
  
     let new_init_memory n state =
-        let _ = n := (!n)+1 in 
+        let () = n := (!n)+1 in 
         Values ([{base_vs= HE(init_chunk (!n) 1 state); offsets=Offsets([0])}]) ;;
 
     let init_vs_chunk n  type_chunk state=
@@ -484,7 +484,7 @@ struct
             | TOP -> absenvs,TOP (* TODO should be change, and TOP check in values_to_names *)
             with
                 Not_found -> 
-                    let _ = n := (!n)+1 in
+                    let () = n := (!n)+1 in
                     let new_val = Values ([{base_vs= HE(init_chunk (!n) 1 state); offsets=Offsets([0])}  ])  in
                     let new_absenvs = set_value absenvs name new_val in
                     (new_absenvs,new_val);;
@@ -689,9 +689,9 @@ struct
         | (TOP,_) | (_,TOP) -> TOP
         | (Values a,Values b) ->
             if (((List.length a)==1) && ((List.hd a).base_vs == Constant)) 
-                then  Values (List.map (fun x -> let _  = x.offsets<-add_offsets ((List.hd a).offsets) x.offsets in x ) b)
+                then  Values (List.map (fun x -> let ()  = x.offsets<-add_offsets ((List.hd a).offsets) x.offsets in x ) b)
             else if (((List.length b)==1) && ((List.hd b).base_vs == Constant))
-                then Values (List.map (fun x -> let _ = x.offsets<-add_offsets ((List.hd b).offsets) x.offsets in x) a)
+                then Values (List.map (fun x -> let () = x.offsets<-add_offsets ((List.hd b).offsets) x.offsets in x) a)
            else TOP;;
 
     let sub a b = 
@@ -1049,7 +1049,7 @@ struct
          | Values vs -> List.iter clean_vs vs ;;
 
     let clean_vsa list_vsa = 
-        List.iter (fun x -> let _ = clean_vss x.values in x.values<-TOP) list_vsa;;
+        List.iter (fun x -> let () = clean_vss x.values in x.values<-TOP) list_vsa;;
    
     let restore_esp vsa =
         let val_esp=get_value_string vsa "esp" in

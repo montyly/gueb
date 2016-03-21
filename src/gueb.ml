@@ -1,8 +1,10 @@
-open Absenv;;
-open Stubfunc;;
-open Ir;;
-open Graph;;
-open Program_piqi;;
+open Absenv
+open Stubfunc
+open Ir
+open Graph
+open Program_piqi
+open Program
+open Heap_functions
 
 
 (* global vars *)
@@ -41,7 +43,7 @@ struct
         in
         let buf = Piqirun.init_from_channel channel in
         let raw_program = parse_program buf in
-        let _ = close_in channel in 
+        let () = close_in channel in 
         let raw_heap_func = raw_program.heap_func in
         let list_funcs = raw_program.functions in
         let malloc = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
@@ -61,8 +63,7 @@ struct
         let channel = open_in_bin program_file in
         let buf = Piqirun.init_from_channel channel in
         let raw_program = parse_program buf in
-        let _ = close_in channel in 
-        let raw_heap_func = raw_program.heap_func in
+        let () = close_in channel in 
         let list_funcs = raw_program.functions in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
         let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] dir (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) in

@@ -1698,7 +1698,7 @@ struct
 
     let print_bbt_gml oc (bb,t) f n id_node=
         let addr = bb.addr_bb/0x100 in
-        let id_node_val = (Hashtbl.length id_node) +1 in
+        let id_node_val = (Hashtbl.length id_node)  in
         let () = Hashtbl.add id_node (n,addr) id_node_val in
         let print oc n id_node_val addr t = Printf.fprintf oc "node [ \n id %d \n addr %d \n call %d \n label \"0x%x\" \n type \"%s\" \n]\n" id_node_val addr n addr t in
         match t with
@@ -1722,10 +1722,16 @@ struct
         let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
         Printf.fprintf oc "%s -> %s\n" id_src id_dst
 
+    let already_seen = Hashtbl.create 4000
+
     let print_bbt_arc_gml oc (ori_addr,ori_n,dst_addr,dst_n) id_node =
         let id_src = Hashtbl.find id_node (ori_n,(ori_addr/0x100)) in
         let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
-        Printf.fprintf oc "edge [ \n source %d \n target %d\n]\n" id_src id_dst
+        try let _ = Hashtbl.find already_seen (id_src,id_dst)  in () 
+        with        
+            Not_found ->
+            let () = Hashtbl.add already_seen (id_src,id_dst) 0 in
+            Printf.fprintf oc "edge [ \n source %d \n target %d\n]\n" id_src id_dst
 
     let print_begin_dot oc =
         Printf.fprintf oc "strict digraph g {\n"
@@ -2001,6 +2007,7 @@ struct
                 in
                 let n = ref 0 in
                 List.iter (fun (alloc,free,use) ->
+                        let () = Hashtbl.clear already_seen in
                         let () = export_call_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d.dot" dir_output str chunk_id !n)  print_begin_dot print_end_dot print_site_dot print_site_arc_dot alloc free use in
                         let () = if (flow_graph_dot) then   
                             let () = export_flow_graph_uaf (Printf.sprintf "%s/uaf-%s%d-%d-details.dot" dir_output str chunk_id !n) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot alloc free use eip calls list_funcs ret false  
@@ -2015,6 +2022,7 @@ struct
 
 
     let print_g dir_output eip calls list_funcs ret flow_graph_gml flow_graph_dot flow_graph_disjoint =
+        let () = Hashtbl.clear already_seen in
         let () = if (flow_graph_dot) then   
             let () = export_flow_graph (Printf.sprintf "%s/graph-details.dot" dir_output ) print_begin_dot print_end_dot print_bbt_dot print_bbt_arc_dot print_group_dot eip calls list_funcs ret false  
             in if(flow_graph_disjoint) then

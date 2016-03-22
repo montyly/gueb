@@ -24,6 +24,7 @@ let merge_output = ref false
 let flow_graph_dot = ref false
 let flow_graph_gml = ref false
 let flow_graph_disjoint = ref false
+let max_depth = ref 400
 
 
 
@@ -72,7 +73,7 @@ struct
         let () = close_in channel in 
         let list_funcs = raw_program.functions in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] dir (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
+        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] dir (!max_depth) (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
         flush Pervasives.stdout
 
 end ;;
@@ -117,6 +118,7 @@ let () =
         ("-funcs-file", Arg.String (fun x ->  funcs_file:=x), "Name of the files containing all the functions name");
         ("-stub", Arg.String (fun x -> stub_name:=x), "Name of the stub module");
         ("-type", Arg.Int (fun x -> type_analysis:=x), "\n\t0 : uaf detection (default)\n\t1 : compute callgraph size (NOT WORKING on BinNavi 6)\n\t2 : uaf detection on a set of functions\n\t3 : compute callgraph size on a set of functions");
+        ("-depth", Arg.Int (fun x -> max_depth:=x), "Max number of funcs to analyze (type 1 and 3). Default 400");
         ("-output_dir", Arg.String (fun x -> dir_output:=x), "Output directory, default /tmp");
     ] in
     let _ =  Arg.parse speclist print_endline "GUEB : Static analyzer\n"  in

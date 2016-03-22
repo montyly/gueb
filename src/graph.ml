@@ -1883,14 +1883,14 @@ struct
             export_flow_graph (Printf.sprintf "%s/graph-details.gml" dir_output ) print_begin_gml print_end_gml print_bbt_gml print_bbt_arc_gml print_group_gml  eip calls list_funcs ret false in
         ()
  
-    let launch_supercallgraph_analysis func_name list_funcs list_malloc list_free dir_output verbose show_call flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
+    let launch_supercallgraph_analysis func_name list_funcs list_malloc list_free dir_output max_depth verbose show_call flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
         let count = ref 1 in
         let count_reil_inst = ref 0 in
         try 
             let (eip,bbs,name) = find_func_name func_name list_funcs parsed_func in
             let () = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs in
             let () = try
-                let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count 400 count_reil_inst verbose show_call 0 0 0 flow_graph parsed_func in
+                let () = explore_graph (eip,bbs,name)  list_funcs ([""]) count max_depth count_reil_inst verbose show_call 0 0 0 flow_graph parsed_func in
                 let () = print_g dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint in
                 Printf.printf "Number of func from %s : %d and %d REIL inst\n" func_name (!count) (!count_reil_inst)
             with

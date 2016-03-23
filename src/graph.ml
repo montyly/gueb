@@ -118,6 +118,9 @@ struct
     (* bb_ori, bb_dst, ori_n, dst_n *) 
     let saved_call = ref [] 
     
+    let call_stack = Stack.create () 
+    let call_stack_tbl = Hashtbl.create 200
+    
     (* bb_ori, bb_dst, ori_n, dst_n *)     
     let saved_ret_call = ref [] 
 
@@ -1210,7 +1213,14 @@ struct
     let visit_before bb = ()
     
     let visit_after bb = ()
-    
+      
+    let stack_to_list s =
+    if (Stack.is_empty s) then []
+    else 
+        let l = ref [] in
+        let () = Stack.iter (fun x -> l := x::!l) s in
+        !l
+
     let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free addr_caller  addr_caller_unloop n_caller flow_graph parsed_func =
         let score_childs=ref false in
         let rec merge_father fathers m=
@@ -1323,6 +1333,8 @@ struct
                                     then 
                                         let () = number_call:=(!number_call+1) in
                                         let () = saved_call := ((bb_ori.addr_bb,bb_ori.unloop),func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
+                                        let () = Stack.push (bb_ori.addr_bb,bb_ori.unloop) call_stack in
+                                        let () = Hashtbl.add call_stack_tbl (!number_call) (stack_to_list call_stack) in
                                         current_call := (!number_call)
                                 in
                                 let () = List.iter (fun x -> init_value x (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) func_name) func_bbs in
@@ -1335,7 +1347,10 @@ struct
                                     let (vsa,ha,hf,score)=value_analysis (func_eip,func_bbs,func_name)(*next_func*) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
-                                    let () = if(flow_graph) then current_call:=number_call_prev in
+                                    let () = if(flow_graph) then 
+                                        let _ = Stack.pop call_stack in
+                                        current_call:=number_call_prev 
+                                    in
                                     let () = score_childs:=(||) (!score_childs) score in
                                     try
                                         let () = n.vsa<-Absenv_v.filter_esp_ebp vsa verbose in
@@ -1358,7 +1373,10 @@ struct
                                     | NOT_RET (vsa,ha,hf,score)  ->
                                         let () = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(flow_graph) then current_call:=number_call_prev in
+                                        let () = if(flow_graph) then 
+                                                                let _ = Stack.pop call_stack in
+                                                                current_call:=number_call_prev 
+                                        in
                                         let () = score_childs:=(||) (!score_childs) score in
                                         let () = if (verbose) then 
                                             let () = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n] bb_ori.unloop) in
@@ -1373,7 +1391,10 @@ struct
                                    | NOT_RET_NOT_LEAF ->
                                         let () = if (verbose) then Printf.printf "End call (NOT RET NOT LEAF) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(flow_graph) then current_call:=number_call_prev in
+                                        let () = if(flow_graph) then 
+                                                                let _ = Stack.pop call_stack in
+                                                                current_call:=number_call_prev 
+                                        in
                                         let () = n.vsa <- restore_stack_frame n.vsa vsa in
                                         let () = n.vsa <- Absenv_v.restore_esp n.vsa in
                                         let () = n.ha<-Absenv_v.merge_alloc_free_conservatif ha hf in
@@ -1547,21 +1568,32 @@ struct
         | NODE_ALLOC_FREE -> print oc id_node_txt addr "allocfree" "aquamarine"
         | NODE_FREE_USE -> print oc id_node_txt addr "freeuse" "darkolivegreen2"  
 
+    let export_callsite n =
+      try
+        let l = Hashtbl.find call_stack_tbl n in
+        let h_addr,h_it = List.hd l in
+        List.fold_left (fun txt x -> let addr,it= x in Printf.sprintf "%x:%d-%s" addr it txt) (Printf.sprintf "%x:%d" h_addr h_it) (List.tl l) 
+      with 
+        | Not_found -> let () = Printf.printf "Callsite number unknow %d\n" n in "??" 
+        | _ -> let () = Printf.printf "Callsite unknow \n" in "??" 
+
     let print_bbt_gml oc (bb,t) f n id_node=
         let addr = bb.addr_bb/0x100 in
+        let last_addr = (List.nth bb.nodes ((List.length bb.nodes)-1)).addr/0x100 in
+        let print_nodes n = List.fold_left (fun x y -> Printf.sprintf "%s,%d" x (y.addr/0x100)) (Printf.sprintf "%d" ((List.hd n).addr/0x100)) (List.tl n) in
         let id_node_val = (Hashtbl.length id_node)  in
         let () = Hashtbl.add id_node (n,addr) id_node_val in
-        let print oc n id_node_val addr t = Printf.fprintf oc "node [ \n id %d \n addr %d \n call %d \n label \"0x%x\" \n type \"%s\" \n]\n" id_node_val addr n addr t in
+        let print oc n id_node_val nodes addr t = Printf.fprintf oc "node [ \n id %d \n addr %d \n call %d \n addrlast %d \n nodes \"%s\" \n label \"0x%x\" \n type \"%s\" \n callsite \"%s\"\n]\n" id_node_val addr n last_addr nodes addr t (export_callsite n) in
         match t with
-        | NODE_OUT -> print oc n id_node_val addr "normal"
-        | NODE_ALLOC -> print oc n id_node_val addr "alloc"
-        | NODE_FREE ->  print oc n id_node_val addr "free"
-        | NODE_USE -> print oc n id_node_val addr "use"
-        | NODE_DF -> print oc n id_node_val addr "df" 
-        | NODE_EIP -> print oc n id_node_val addr "eip" 
-        | NODE_EIP_ALLOC ->  print oc n id_node_val addr"eipalloc" 
-        | NODE_ALLOC_FREE -> print oc n id_node_val addr "allocfree" 
-        | NODE_FREE_USE -> print oc n id_node_val addr "freeuse" 
+        | NODE_OUT -> print oc n id_node_val "" addr "normal"
+        | NODE_ALLOC -> print oc n id_node_val "" addr "alloc"
+        | NODE_FREE ->  print oc n id_node_val "" addr "free"
+        | NODE_USE -> print oc n id_node_val (print_nodes bb.nodes) addr "use"
+        | NODE_DF -> print oc n id_node_val (print_nodes bb.nodes) addr "df" 
+        | NODE_EIP -> print oc n id_node_val "" addr "eip" 
+        | NODE_EIP_ALLOC ->  print oc n id_node_val "" addr "eipalloc" 
+        | NODE_ALLOC_FREE -> print oc n id_node_val "" addr "allocfree" 
+        | NODE_FREE_USE -> print oc n id_node_val "" addr "freeuse" 
 
     let print_site_arc_dot oc (((addr,it),f,n),t) leafs =
         List.iter (fun (((addr_,it_),f_,n_),t_) -> 
@@ -1913,7 +1945,11 @@ struct
                 (!count) 
 
     let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free merge_output flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
-        try 
+        try
+            let () = Hashtbl.clear call_stack_tbl in
+            let () = Stack.clear call_stack in
+            let () = Hashtbl.add call_stack_tbl (0) ([(0,0)]) in
+            let () = Stack.push (0,0) call_stack in
             let (eip,bbs,name) = find_func_name func_name list_funcs parsed_func in
             let () = List.iter (fun x -> init_value x [((eip.addr_bb,eip.unloop),func_name,!current_call)] func_name) bbs  in
             let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free  0 0 0 flow_graph parsed_func in

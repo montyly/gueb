@@ -179,20 +179,20 @@ struct
         | Constant,Constant -> true
         | Init r1, Init r2 -> r1=r2
         | HE h1, HE h2 -> same_chunk h1 h2
-        | _ -> false;;
+        | Constant , Init _ | Constant , HE _ | Init _ , Constant | Init _ , HE _ | HE _ , Constant | HE _ , Init _  -> false;;
         
     let same_base_offset b1 b2 =
         match (b1.base,b2.base) with
         | Constant ,Constant -> b1.offset==b2.offset
         | Init r1, Init r2 ->r1=r2 &&  b1.offset==b2.offset
         | HE h1 , HE h2 -> (same_chunk  h1 h2) && b1.offset==b2.offset
-        | _,_ -> false;;
+        | Constant , Init _ | Constant , HE _ | Init _ , Constant | Init _ , HE _ | HE _ , Constant | HE _ , Init _  -> false;;
 
     let same_name n1 n2 =  
         match (n1,n2) with
         | Reg r1,Reg r2 -> r1=r2
         | BaseOffset b1, BaseOffset b2 -> same_base_offset b1 b2
-        | _,_ -> false;;
+        | Reg _ , BaseOffset _ | BaseOffset _ , Reg _ -> false;;
 
     (* 
      * Printy print functions
@@ -203,7 +203,7 @@ struct
         "Cst" ;;
 
     let pp_state st=
-        Printf.sprintf "%s" (List.fold_left (fun x ((addr,it),f,n) -> x^" "^(Printf.sprintf "0x%x:%d:%s" addr it f)) "" st);;
+        Printf.sprintf "%s" (List.fold_left (fun x ((addr,it),f,_n) -> x^" "^(Printf.sprintf "0x%x:%d:%s" addr it f)) "" st);;
    
     let pp_states st =
         List.fold_left (fun x y -> (pp_state y) ^ " | " ^ x ) "" st;;
@@ -286,7 +286,7 @@ struct
         | Values v -> Values (copy_vals v);;
 
     (* other if you want to have one ESP per function*)
-    let initAbsenCall n = None;;
+    let initAbsenCall _n = None;;
 
     let init_reg r=
         {name=Reg (r);values=Values ([{base_vs=Init (r);offsets=Offsets [0]}])};;
@@ -456,11 +456,11 @@ struct
     let get_integer_values vs =
         match vs with 
         | Values v ->
-            let v = List.filter ( fun x -> match x.base_vs with | Constant -> true |  _ -> false ) v in
+            let v = List.filter ( fun x -> match x.base_vs with | Constant -> true | HE _ | Init _ -> false ) v in
             let offsets = List.map (fun x -> x.offsets) v in
-            if (List.exists (fun x -> match x with | TOP_Offsets -> true | _ -> false ) offsets) then [None]
+            if (List.exists (fun x -> match x with | TOP_Offsets -> true | Offsets _ -> false ) offsets) then [None]
             else
-                let offsets = List.map (fun x -> match x with | Offsets o -> (List.map (fun y -> Some y) o) | _ -> [Some 0] ) offsets in
+                let offsets = List.map (fun x -> match x with | Offsets o -> (List.map (fun y -> Some y) o) | TOP_Offsets -> [Some 0] ) offsets in
                 List.concat offsets
         | TOP -> [None]
 
@@ -493,7 +493,7 @@ struct
     let get_value_string absenvs name=
         try Values ([{base_vs=Constant;offsets=Offsets [int_of_string name]}])
         with    
-            int_of_string -> 
+            Failure "int_of_string" -> 
                 let name_convert = string_to_name name in
                 get_value absenvs name_convert;;
 
@@ -501,7 +501,7 @@ struct
     let get_value_string_create absenvs name n state=
         try (absenvs, Values ([{base_vs=Constant;offsets=Offsets [int_of_string name]}]))
         with    
-            int_of_string -> 
+            Failure "int_of_string" -> 
                 let name_convert = string_to_name name in
                 get_value_create absenvs name_convert n state;;
 
@@ -869,25 +869,25 @@ struct
                         if((List.length o)==1 && (List.hd o) == 0) then Values ([{base_vs= Constant; offsets=Offsets([1])}])
                         else Values ([{base_vs= Constant; offsets=Offsets([0])}])
 
-                   | _ -> Values ([{base_vs= Constant; offsets=Offsets([0])}])
+                   | TOP_Offsets -> Values ([{base_vs= Constant; offsets=Offsets([0])}])
                )
                else Values ([{base_vs= Constant; offsets=Offsets([0])}])
-        | _ -> Values ([{base_vs= Constant; offsets=Offsets([0])}]) 
+        | TOP -> Values ([{base_vs= Constant; offsets=Offsets([0])}]) 
 
     (*
      * Remove elem in list that are not coming from the heap
      * *)
-    let clean_he_for_free v hf =
+    let clean_he_for_free v =
         let free_elems=List.map 
             (fun x -> 
                 match x.base_vs with
                 | HE e -> Some e
-                | _ -> None
+                | Init _ | Constant -> None
             ) v
         in 
         let free_elems_cleans=List.filter 
             (fun x -> match x with
-                | Some a -> true
+                | Some _ -> true
                 | None -> false
             ) free_elems
         in
@@ -909,7 +909,7 @@ struct
                     | None -> false  
                 ) chunks 
         in
-        let free_elems_cleans = clean_he_for_free v hf in
+        let free_elems_cleans = clean_he_for_free v in
         List.find_all (fun x -> chunk_in x free_elems_cleans ) hf
         end
 
@@ -928,7 +928,7 @@ struct
                         | Some h -> not (same_base (HE chunk) (HE h))
                         | None -> false  
                 ) chunks in
-        let free_elems_cleans = clean_he_for_free v hf in
+        let free_elems_cleans = clean_he_for_free v in
         let new_ha=List.filter (fun x->chunk_not_in x free_elems_cleans) ha in
         let new_hf=(List.map (fun x -> match x with | Some a -> a.state_free<-state::a.state_free ; a | None -> raise ERROR)  free_elems_cleans)@hf 
         in (new_ha,new_hf);;
@@ -955,7 +955,7 @@ struct
             match val_ebp with
             | TOP -> let () = if (verbose) then Printf.printf "Error Ebp = TOP\n" in
                      raise ERROR
-            | _ -> ()
+            | Values _ -> ()
         in
         let val_esp=get_value_string vsa "esp" in
         match val_esp with
@@ -975,13 +975,13 @@ struct
                                     | BaseOffset b -> 
                                     (
                                         match b.base with
-                                        | Init r when (r="esp") ->
+                                        | Init "esp" ->
                                             if(b.offset <0xf0000000) then true (* case when for example esp + 0x4, because esp init =0 *)
                                             else if (b.offset<offset) then false
                                             else true
-                                        | _ -> true
+                                        | HE _ | Constant | Init _ -> true
                                     )
-                                    | _ -> true
+                                    | Reg _  -> true
                                 ) vsa;;
 
     (* 
@@ -1000,9 +1000,9 @@ struct
                 begin
                     match b.base with
                     | HE h -> filter tl (h::l)
-                    | _ -> filter tl l
+                    | Init _ | Constant -> filter tl l
                 end
-            | _ :: tl -> filter tl l
+            | Reg _ :: tl -> filter tl l
         in
         filter names []
         
@@ -1010,13 +1010,13 @@ struct
         let ret = List.map 
         (fun x -> 
             match x with
-            | Reg r -> None
+            | Reg _ -> None
             | BaseOffset b ->
                 match b.base with
                 | HE h-> 
                     if (List.exists (fun x -> same_chunk x h) hf) then Some h
                     else None
-                | _ -> None
+                | Init _ | Constant -> None
         ) names
         in
         List.fold_left 
@@ -1030,26 +1030,26 @@ struct
         let ret = List.map 
             (fun x -> 
                 match x with
-                | Reg r -> false
+                | Reg _ -> false
                 | BaseOffset b ->
                     match b.base with
-                    | HE h-> true
-                    | _ -> false
+                    | HE _-> true
+                    | Init _ | Constant -> false
             ) names
         in
         List.fold_left (fun x y ->(||)  x y) false ret;;
 
     let retn_not_analyse () = TOP;;
 
-    let clean_vs list_vs= () ;;
+  (*  let clean_vs _list_vs= () ;;
 
     let clean_vss list_vs =
          match list_vs with 
          | TOP -> ()
-         | Values vs -> List.iter clean_vs vs ;;
+         | Values vs -> List.iter clean_vs vs ;;*)
 
     let clean_vsa list_vsa = 
-        List.iter (fun x -> let () = clean_vss x.values in x.values<-TOP) list_vsa;;
+        List.iter (fun x -> (*let () = clean_vss x.values in*) x.values<-TOP) list_vsa;;
    
     let restore_esp vsa =
         let val_esp=get_value_string vsa "esp" in

@@ -2,8 +2,6 @@ open Absenv
 open Program_piqi
 open Function_
 open Node
-open Block
-open Block_relation
 
 module type IR = functor (Absenv_v : AbsEnvGenerique) ->
 sig 
@@ -160,7 +158,7 @@ type arg_reil=
     | Empty 
     | Integer of  int
     | Register of register_reil
-    | Sub_address  ;; (** jmp create by reil **)
+    | Sub_address  ;; (* jmp create by reil *)
 
 type stmt_reil = 
 {
@@ -287,7 +285,8 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
         | Undef -> "undef"
         | Mod -> "mod"
         | Bisz -> "bisz"
-        | _ -> "Unknow";;
+        | Nop  -> "nop"
+        | Unknow -> "Unknow";;
 
     let print_reg reg=
         match reg with 
@@ -350,15 +349,14 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
 
 
     let print_args s =
-        let print_size_arg si=
-            ",-" 
+        let print_size_arg _si = ",-"  (* TODO imprive print size *)
         in
         let print_arg arg = 
             match arg with
                 | Empty -> ",EMPTY, "
                 | Integer a -> ",INTEGER_LITERAL,"^(string_of_int a)
                 | Register reg -> ",REGISTER,"^(print_reg reg)
-                | Sub_address ->  ",SUB_ADDRESS, "(** jmp create by reil **)
+                | Sub_address ->  ",SUB_ADDRESS, "(* jmp create by reil *)
         in
         (print_size_arg s)^(print_arg s.arg0)^(print_size_arg s)^(print_arg s.arg1)^(print_size_arg s)^(print_arg s.arg2);;
             
@@ -396,35 +394,36 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
 
     let get_value_jump ir vsa =
         match ir.type_node with
-        | Jcc -> (
+        | Jcc -> 
+            begin
             match ir.arg2 with
                 | Integer a -> 
                     Some a
-                | Register T1 -> 
+                | Register a when a = T1 -> 
                     let v = Absenv_v.get_value_string vsa "t1" in
                     let is = Absenv_v.get_integer_values v  in
                     if (List.length is) == 0 then None
                     else
                         List.hd is 
-                | _ -> None                 
-            )
-        | _ -> None;;
+                | Register _ | Empty | Sub_address -> None (* TODO : handle different jump ? *)              
+            end
+        |Sub|And|Xor|Str|Bsh|Stm|Ldm|Add|Nop|Mul|Mod|Div|Or|Bisz|Undef|Unknow -> None;;
 
     let get_first_arg ir =
         match ir.arg0 with
         | Integer i -> Some i
-        | _ -> None
+        | Empty|Register _|Sub_address -> None
 
     let arg_to_string a=
         match a with 
         | Register r -> print_reg r
         | Integer a -> string_of_int a
-        | _ -> "uknw";;
+        | Empty | Sub_address -> "unknow";;
 
     (*
      * transfer function
      * *)
-    let function_transfer ir abs hf number_init addr func_name call_number backtrack = 
+    let function_transfer ir abs _hf number_init addr func_name call_number backtrack = 
         let state = (addr,func_name,call_number)::backtrack in
         match ir.type_node with 
             (*
@@ -620,7 +619,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 let chunks=Absenv_v.check_uaf names hf in
                 match chunks with
                 | [] -> None
-                | c -> Some (stmt,chunks,addr)
+                | _ -> Some (stmt,chunks,addr)
                 )
         (*
          * ldm a1,,a3
@@ -636,10 +635,10 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 let chunks=Absenv_v.check_uaf names hf in
                 match chunks with
                 | [] -> None
-                | c -> Some (stmt,chunks,addr)
+                | _ -> Some (stmt,chunks,addr)
                 )
 
-        | _ -> None;;
+        | Sub|And|Xor|Str|Bsh|Jcc|Add|Nop|Mul|Mod|Div|Or|Bisz|Undef|Unknow -> None;;
 
 
     (*
@@ -669,16 +668,18 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 let vals=Absenv_v.get_value_string abs arg0 in
                 let names=Absenv_v.values_to_names vals in
                 Absenv_v.names_to_he names 
-        | _ -> [] ;;
+        | Sub|And|Xor|Str|Bsh|Jcc|Add|Nop|Mul|Mod|Div|Or|Bisz|Undef|Unknow -> [] ;;
 
     (* 
      * Protobuf parsing
      *)    
     let parse_blocks_protobuf (blocks : Program_piqi.block list ) =
-        List.map (fun (x : Program_piqi.block) -> (Int64.to_int x.addr,List.map (fun y -> Int64.to_int y)  x.nodes_addr) ) blocks;;
+        let open! Block in (* open! use to dissable a shadow warning, got no idea how to fix the warning :) *)
+        List.map (fun (x : Block.t) -> (Int64.to_int x.addr,List.map (fun y -> Int64.to_int y)  x.nodes_addr) ) blocks;;
 
     let parse_relations_protobuf  (relations : Program_piqi.block_relation list) = 
-        List.map (fun  (x : Program_piqi.block_relation) -> (Int64.to_int x.father,Int64.to_int x.son) ) relations ;;
+        let open Block_relation in
+        List.map (fun  (x : Block_relation.t) -> (Int64.to_int x.father,Int64.to_int x.son) ) relations ;;
 
     let parse_node_protobuf (node: Program_piqi.node) =
         let parse_reil_addr  type_node s0 t0 v0 s1 t1 v1 s2 t2 v2  = parse_reil (Int64.to_int node.addr) type_node s0 t0 v0 s1 t1 v1 s2 t2 v2  in
@@ -709,7 +710,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                             let names=Absenv_v.values_to_names vals in
                                 Absenv_v.check_use_heap names
                 )
-        | _ -> false;;
+        | Sub|And|Xor|Str|Bsh|Jcc|Ldm|Add|Nop|Mul|Mod|Div|Or|Bisz|Undef|Unknow -> false;;
     
 
 

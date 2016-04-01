@@ -9,7 +9,7 @@ end ;;
 
 module StubNoFunc = functor (Absenv_v : AbsEnvGenerique) ->
 struct
-    let stub  addr vsa ha hf number_init addr func_name call_number backtrack  = false,vsa,ha,hf
+    let stub _addr vsa ha hf _number_init _addr _func_name _call_number _backtrack  = false,vsa,ha,hf
 end;;
  
 module StubOptiPNG = functor (Absenv_v : AbsEnvGenerique) ->
@@ -17,7 +17,6 @@ struct
     let png_free    = 0x08055F00 ;;
     let png_destroy = 0x08055E30 ;;
     let skip = [0x8055220(*png_set_error_fn*)];;
-
 
     let restore_esp vsa = Absenv_v.restore_esp vsa;;    
 
@@ -51,7 +50,7 @@ struct
                 let () = Printf.printf "Error on png_destroy? \n" in 
                 true,(restore_esp vsa),ha,hf
 
-    let stub addr_call vsa ha hf number_init addr func_name call_number backtrack  =
+    let stub addr_call vsa ha hf _number_init addr func_name call_number backtrack  =
         match addr_call with
         | _ when addr_call = png_free -> call_png_free vsa ha hf addr func_name call_number backtrack 
         | _ when addr_call = png_destroy -> call_png_destroy vsa ha hf addr func_name call_number backtrack
@@ -70,7 +69,7 @@ struct
     let restore_esp vsa = Absenv_v.restore_esp vsa;;    
 
 
-    let call_jas_matrix vsa ha hf number_chunk addr func_name call_number backtrack =
+    let call_jas_matrix vsa ha hf number_chunk _addr _func_name _call_number backtrack =
         try
             let new_chunk = (Absenv_v.init_vs_chunk ( !number_chunk) 0 backtrack) in
             let vsa = Absenv_v.set_value_string vsa "eax" new_chunk in
@@ -101,7 +100,7 @@ struct
 
 
 
-    let call_gtk_tree_model_get vsa ha hf number_chunk addr func_name call_number backtrack =
+    let call_gtk_tree_model_get vsa ha hf number_chunk _addr _func_name _call_number backtrack =
         try
             let vsa = restore_esp vsa in
             (* We create a new chunk*)

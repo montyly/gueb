@@ -20,7 +20,7 @@ let stub_name = ref ""
 let type_analysis = ref 0
 let dir_output = ref "results"
 let print_graph = ref false
-let merge_output = ref false
+(*let merge_output = ref false*)
 let flow_graph_dot = ref false
 let flow_graph_gml = ref false
 let flow_graph_disjoint = ref false
@@ -54,7 +54,7 @@ struct
         let malloc = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
         let free = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free)  (!merge_output) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
+        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free)  ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
         Printf.printf "--------------------------------\n"
 
     end ;;
@@ -73,7 +73,7 @@ struct
         let () = close_in channel in 
         let list_funcs = raw_program.functions in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs [] [] dir (!max_depth) (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
+        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs  dir (!max_depth) (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
         flush Pervasives.stdout
 
 end ;;

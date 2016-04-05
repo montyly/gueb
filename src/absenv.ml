@@ -5,33 +5,36 @@ sig
     type absenv
     type valuesSet
     type nameVal
+    type chunk_t
 
-    val initAbsenCall : int -> absenv option
-    val init_first : absenv list
-    val reset : string -> absenv list
-    val init_malloc : int -> ((int*int)*string*int) list -> absenv list
-    val init_vs_chunk : int -> int -> ((int*int)*string*int) list -> valuesSet
-    val init_chunk : int -> int -> ((int*int)*string*int) list -> he
+
+    val initAbsenEnv : unit -> absenv
+    val init_first : absenv
+    val init_malloc : int -> ((int*int)*string*int) list -> absenv
+    val init_vs_chunk : int -> chunk_t -> ((int*int)*string*int) list -> valuesSet
+    val init_chunk : int -> chunk_t -> ((int*int)*string*int) list -> he
     val new_init_memory : int ref-> ((int*int)*string*int) list ->  valuesSet    
+
+    val classical_chunk : unit -> chunk_t
 
     val create_cst : int -> valuesSet
     val merge_he : he list -> he list -> he list
     val merge_alloc_free_conservatif : he list -> he list -> he list
     val merge_values_two : valuesSet -> valuesSet -> valuesSet
-    val merge : absenv list-> absenv list-> absenv list
-    val update : absenv list-> absenv list-> absenv list(* init -> input ->   *)
+    val merge : absenv-> absenv-> absenv
+    val update : absenv-> absenv-> absenv(* init -> input ->   *)
 
     val get_integer_values : valuesSet -> int option list
-    val get_value : absenv list -> nameVal -> valuesSet
-    val get_value_create: absenv list -> nameVal -> int ref -> ((int*int)*string*int) list -> absenv list * valuesSet
-    val set_value : absenv list -> nameVal-> valuesSet -> absenv list
+    val get_value : absenv -> nameVal -> valuesSet
+    val get_value_create: absenv -> nameVal -> int ref -> ((int*int)*string*int) list -> absenv * valuesSet
+    val set_value : absenv -> nameVal-> valuesSet -> absenv
    
-    val get_chunk_key : he -> int*int
+    val get_chunk_key : he -> int* chunk_t
     val get_chunk_states : he -> ((int*int)*string*int) list * (((int*int)*string*int) list) list
  
-    val get_value_string : absenv list -> string -> valuesSet
-    val get_value_string_create : absenv list -> string -> int ref -> ((int*int)*string*int) list -> absenv list *valuesSet
-    val set_value_string : absenv list -> string -> valuesSet -> absenv list
+    val get_value_string : absenv -> string -> valuesSet
+    val get_value_string_create : absenv -> string -> int ref -> ((int*int)*string*int) list -> absenv *valuesSet
+    val set_value_string : absenv -> string -> valuesSet -> absenv
 
     val string_to_name : string -> nameVal
     val values_to_names : valuesSet -> nameVal list
@@ -49,17 +52,18 @@ sig
 
     val pp_name : nameVal -> string
     val pp_valuesset : valuesSet -> string
-    val pp_absenvs : absenv list -> string
+    val pp_absenvs : absenv -> string
     val pp_he : he list -> string
     val pp_chunk : he -> string
+    val pp_chunk_t : chunk_t -> string
     val pp_state :  ((int*int)*string*int) list -> string
  
     val check_df : he list -> valuesSet -> he list
     val free: he list-> he list-> valuesSet -> ((int*int)*string*int) list -> bool -> (he list)*(he list)
     val filter_values : valuesSet list-> valuesSet 
-    val filter_esp_ebp : absenv list-> bool -> absenv list
+    val filter_esp_ebp : absenv-> bool -> absenv
 
-    val restore_stack_frame : absenv list -> absenv list -> absenv list
+    val restore_stack_frame : absenv -> absenv -> absenv
     
     val names_to_he : nameVal list -> he list
     val check_uaf : nameVal list -> he list -> he list
@@ -68,9 +72,9 @@ sig
 
     val top_value : unit -> valuesSet
 
-    val clean_vsa : absenv list -> unit 
+    val clean_vsa : absenv -> unit 
 
-    val restore_esp : absenv list -> absenv list
+    val restore_esp : absenv -> absenv
 end;;
 
 (* 
@@ -91,10 +95,12 @@ struct
 
     type register = string;;
 
+    type chunk_t = NORMAL | INIT;;
+
     type chunk = {
             base_chunk : int;
             size : int;
-            type_chunk : int ; (* 0 : heap, 1 : init mem, hack when no init memory, we class it as chunk *)
+            type_chunk : chunk_t ; (* 0 : heap, 1 : init mem, hack when no init memory, we class it as chunk *)
             mutable state_alloc : ((int*int)*string*int) list; (* addr it func_name number_func *)
             mutable state_free : (((int*int)*string*int) list) list;
         };;
@@ -130,10 +136,19 @@ struct
         | Reg of register
         | BaseOffset of baseoffset;;
 
-    type absenv = {
+(*    type absenv = {
             name : nameVal;
             mutable values : valuesSet;
+        };;*)
+
+    type absenv = {
+            heap : ((int * offset * chunk_t), (chunk * valuesSet)) Hashtbl.t; (* chunk_id * offset * type -> chunk * valuesset *)
+            stack : ((register * offset ), valuesSet) Hashtbl.t ; (* register_init_name * offset -> valuesset *)
+            constant : (offset, valuesSet) Hashtbl.t; (* offset -> valuesset *)
+            register : (register, valuesSet) Hashtbl.t; (* register_name -> valuesSet*)
         };;
+
+    let classical_chunk () = NORMAL
 
     (* number max of value *)
     let max_KSET=10;;
@@ -212,20 +227,23 @@ struct
         let str= 
         begin
             match he.type_chunk with
-            | 0 -> "chunk"
-            | 1 -> "val_init"
-            | _ -> "unknow"
+            | NORMAL -> "chunk"
+            | INIT -> "val_init"
         end
         in 
         str^(string_of_int he.base_chunk) ^"("^(string_of_int he.size)^") alloc : ["^(pp_state he.state_alloc)^"] free : ["^(pp_states he.state_free)^"]";;
-    
+   
+    let pp_chunk_t t =
+        match t with
+        | INIT -> "init_val"
+        | NORMAL -> "chunk"
+ 
     let pp_chunk he =
         let str= 
         begin
             match he.type_chunk with
-            | 0 -> "chunk"
-            | 1 -> "val_init"
-            | _ -> "unknow"
+            | NORMAL -> "chunk"
+            | INIT -> "val_init"
         end
         in 
         str^(string_of_int he.base_chunk);;
@@ -263,15 +281,18 @@ struct
         | TOP -> "TOP"
         | Values v -> List.fold_left (fun x y -> x^y^" | " ) " | " (List.map pp_valueset v);;
 
-    let pp_absenv abs =
-        pp_name abs.name ^" : "^(pp_valuesset abs.values) 
+    let pp_absenv name values =
+        pp_name name ^" : "^(pp_valuesset values) 
 
     let pp_absenvs abs =
-        let rec pp_absenvs_rec abs l =
-            match abs with
-            | [] -> l;
-            | hd::tl -> pp_absenvs_rec tl ((pp_absenv hd)^"\n"^l)
-        in pp_absenvs_rec abs "";;
+        let heap = abs.heap in
+        let stack = abs.stack in
+        let constant = abs.constant in
+        let register = abs.register in
+        let txt = Hashtbl.fold (fun reg values txt -> txt ^"\t"^(pp_register reg )^" : "^(pp_valuesset values)^"\n" ) register "Register\n" in
+        let txt = Hashtbl.fold (fun (reg,off) values txt -> txt ^"\t"^(pp_register reg) ^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) stack (Printf.sprintf "%sStack\n" txt) in
+        let txt = Hashtbl.fold (fun (_,off,_) (chunk,values) txt -> txt ^"\t"^(pp_chunk chunk)^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) heap (Printf.sprintf "%sHeap\n" txt) in
+        Hashtbl.fold (fun off values txt -> txt ^"\t"^(pp_cst)^" "^( pp_offset off )^" : "^(pp_valuesset values)^"\n" ) constant (Printf.sprintf "%sConstant\n" txt) 
 
     let copy_vals v=
         let rec copy_vals_rec v l= 
@@ -286,49 +307,102 @@ struct
         | Values v -> Values (copy_vals v);;
 
     (* other if you want to have one ESP per function*)
-    let initAbsenCall _n = None;;
+    let initAbsenEnv () = {stack = Hashtbl.create 50; heap = Hashtbl.create 50; register = Hashtbl.create 50; constant = Hashtbl.create 50};;
 
-    let init_reg r=
-        {name=Reg (r);values=Values ([{base_vs=Init (r);offsets=Offsets [0]}])};;
+    let get_he abs id offset t =
+        let tbl = abs.heap in
+        let _,res = Hashtbl.find tbl (id,offset,t) in
+        res
+ 
+    let get_he_chunk abs id offset t =
+        let tbl = abs.heap in
+        let res,_ = Hashtbl.find tbl (id,offset,t) in
+        res
 
-    let init_reg_base r =
-        {name=Reg (r);values=Values ([{base_vs=Constant ;offsets=Offsets [0]}])};;
-
-    let init_reg_val r v=
-        {name=Reg (r);values=v};;
-
-    let reset reg =
-            [init_reg_val reg TOP ];;
+    let get_stack abs reg offset  =
+        let tbl = abs.stack in
+        Hashtbl.find tbl (reg,offset) 
     
+    let get_constant abs offset =
+        let tbl = abs.constant in
+        Hashtbl.find tbl (offset) 
+
+    let get_register abs reg  =
+        let tbl = abs.register in
+        Hashtbl.find tbl (reg) 
+
+    let set_he abs id offset t chunk vs =
+        let tbl = abs.heap in
+        Hashtbl.replace tbl (id,offset,t) (chunk,vs)
+    
+    let set_stack abs reg offset vs =
+        let tbl = abs.stack in
+        Hashtbl.replace tbl (reg,offset) (vs)
+    
+    let set_constant abs offset vs =
+        let tbl = abs.constant in
+        Hashtbl.replace tbl (offset) (vs)
+
+    let set_register abs reg vs =
+        let tbl = abs.register in
+        Hashtbl.replace tbl (reg) (vs)
+ 
+    let init_reg abs r =
+        set_register abs r (Values ([{base_vs=Init (r);offsets=Offsets [0]}]))
+
+    let init_reg_base abs r =
+        set_register abs r (Values ([{base_vs=Constant ;offsets=Offsets [0]}]));;
+
+    let init_reg_val abs r v =
+        set_register abs r v
+
     let init_first =
-            [init_reg "esp";init_reg "ebp";init_reg "eax" ; init_reg_base "dsbase" ; init_reg_base "ssbase"];;
+        let abs = initAbsenEnv() in
+        let () = init_reg abs "esp" in
+        let () = init_reg abs "ebp" in
+        let () = init_reg abs "eax" in
+        let () = init_reg_base abs "dsbase" in
+        let () = init_reg_base abs "ssbase" in
+        abs
 
     let init_chunk n  type_chunk state=
         {base_chunk=n;size=0;type_chunk=type_chunk;state_alloc=state;state_free=[]};;
  
     let new_init_memory n state =
         let () = n := (!n)+1 in 
-        Values ([{base_vs= HE(init_chunk (!n) 1 state); offsets=Offsets([0])}]) ;;
+        Values ([{base_vs= HE(init_chunk (!n) INIT state); offsets=Offsets([0])}]) ;;
 
     let init_vs_chunk n  type_chunk state=
         Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=type_chunk;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }]);;
  
     let init_malloc n state =
-        [   {name=BaseOffset ({base=HE ({base_chunk=n;size=0;type_chunk=0;state_alloc=state;state_free=[]});offset=0});values=Values ([{base_vs=Constant;offsets=Offsets [0]}])};
+        let abs = initAbsenEnv() in
+        (*let name = BaseOffset ({base=HE ({base_chunk=n;size=0;type_chunk=0;state_alloc=state;state_free=[]});offset=0}) in*)
+        let chunk = ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) in
+        let vals = Values ([{base_vs=Constant;offsets=Offsets [0]}]) in
+        let () = set_he abs n 0 NORMAL chunk vals in
+        let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
+        abs
+        (*
+        [   {name=;values=};
             init_reg_val "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=0;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }]))
-            ];;
+            ];;*)
 
-    let diff a b =
+    (* Return elems that are not in both absenv (a nor b )  *)
+(*    let diff a b =
+
+        
+
         let rec diff_name a b l= 
             match a with
             | [] -> l
             | tl::hd -> if List.exists (fun x -> same_name tl.name x.name) b then diff_name hd b l
                         else diff_name hd b (({name=tl.name;values=copy_valsset tl.values})::l)
         in
-        (diff_name a b [])@(diff_name b a []);;
+        (diff_name a b [])@(diff_name b a []);;*)
 
     (* Return a union b*)
-    let union a b = 
+   (* let union a b = 
         let rec same_rec a b l = 
             match a with
             | [] -> l
@@ -339,10 +413,10 @@ struct
                     | (TOP,v) | (v,TOP) -> same_rec hd b ((tl.name, (v))::l) (* If A union B, and A TOP, keep B *)
                     | (Values v1,Values v2) -> same_rec hd b ((tl.name,(Values (v1@v2)))::l)
                     with Not_found -> same_rec hd b l
-        in same_rec a b [];;
+        in same_rec a b [];;*)
 
     (* return names that are both in a and b, but keep values from a *)
-    let inter a b = 
+  (*  let inter a b = 
         let rec same_rec a b l = 
             match a with
             | [] -> l
@@ -350,7 +424,7 @@ struct
                 if (List.exists (fun x -> same_name tl.name x.name) b) then same_rec hd b ((tl.name,tl.values)::l)
                 else  same_rec hd b l
         in
-            same_rec a b [];;
+            same_rec a b [];;*)
 
     let append_offsets o1 o2 =
         match (o1,o2) with
@@ -419,39 +493,123 @@ struct
                 TOP_VAL -> TOP
             )
 
-    let merge_values_two v1 v2=
+(*    let merge_values_two v1 v2=
         match (v1,v2) with
         | TOP,_ | _,TOP -> TOP
-        | Values v1, Values v2 -> merge_values (Values (v1@v2));;
+        | Values v1, Values v2 -> merge_values (Values (v1@v2));;*)
     
-    let merge_abs abs =
+    (* If TOP, keep no TOP *) 
+    let merge_values_two v1 v2=
+        match (v1,v2) with
+        | TOP,v | v,TOP -> v
+        | Values v1, Values v2 -> merge_values (Values (v1@v2));;   
+  (*  let merge_abs abs =
         let rec merge_rec abs l=
             match abs with
             | [] -> l
             | (name,values)::hd -> 
             merge_rec hd ({name=name;values=merge_values values}::l)
         in
-            merge_rec abs [];;
+            merge_rec abs [];;*)
 
     let merge a b =  
-        let diff_name = diff a b in
-        let same_name = union a b in
-        let merge_n = merge_abs same_name in
-        diff_name@merge_n;;
-
+        let stack_a = a.stack in
+        let heap_a = a.heap in
+        let constant_a = a.constant in
+        let register_a = a.register in
+        let stack_b = b.stack in
+        let heap_b = b.heap in
+        let constant_b = b.constant in
+        let register_b = b.register in
+        let nor_union a b = 
+            let only_a = Hashtbl.fold (fun k v l -> try let _ =  Hashtbl.find b k in l with Not_found -> (k,v)::l) a [] in
+            let only_b, both = Hashtbl.fold (fun k v1 (l1,l2) -> try let v2 =  Hashtbl.find a k in (l1,(k,v1,v2)::l2) with Not_found -> ((k,v1)::l1,l2)) b ([],[]) in
+            only_a,only_b,both
+        in
+        let only_stack_a,only_stack_b,both_stack = nor_union stack_a stack_b in
+        let only_heap_a,only_heap_b,both_heap = nor_union heap_a heap_b in
+        let only_register_a,only_register_b,both_register = nor_union register_a register_b in
+        let only_constant_a,only_constant_b,both_constant = nor_union constant_a constant_b in
+        let stack = Hashtbl.create 50 in
+        let heap = Hashtbl.create 50 in
+        let register = Hashtbl.create 50 in
+        let constant = Hashtbl.create 50 in
+        let add tbl l = List.iter (fun (k,v) -> Hashtbl.add tbl k v ) l in
+        let add_merge tbl l = List.iter (fun (k,v1,v2) -> Hashtbl.add tbl k (merge_values_two v1 v2) ) l in
+        let add_merge_he tbl l = List.iter (fun (k,(c1,v1),(_c2,v2)) -> Hashtbl.add tbl k (c1,(merge_values_two v1 v2)) ) l in (* TODO should check that c1 = c2 ? *)
+        let add_all tbl l1 l2 b = 
+            let () = add tbl l1 in
+            let () = add tbl l2 in
+            add_merge tbl b in
+        let add_he tbl l1 l2 b = 
+            let () = add tbl l1 in
+            let () = add tbl l2 in
+            add_merge_he tbl b in
+        let () = add_all stack only_stack_a only_stack_b both_stack in
+        let () = add_all register only_register_a only_register_b both_register in
+        let () = add_all constant only_constant_a only_constant_b both_constant in
+        let () = add_he heap only_heap_a only_heap_b both_heap in
+        {stack = stack; heap = heap ; constant = constant; register= register}
+       
+    (* merge a and b, if intersection, keeps a *) 
     let update a b = 
-        let diff_name = diff a b in
-        let same_name = inter a b in
-        let merge_n = merge_abs same_name in
-        diff_name@merge_n;;
+        let stack_a = a.stack in
+        let heap_a = a.heap in
+        let constant_a = a.constant in
+        let register_a = a.register in
+        let stack_b = b.stack in
+        let heap_b = b.heap in
+        let constant_b = b.constant in
+        let register_b = b.register in
+        let nor_union a b = (* in intersection, keeps a *)
+            let vals = Hashtbl.fold (fun k v l -> (k,v)::l) a [] in
+            let vals_b =  Hashtbl.fold (fun k v l -> try let _ =  Hashtbl.find a k in l with Not_found -> (k,v)::l) b [] in
+            vals,vals_b 
+        in
+        let vals_stack_a,only_stack_b = nor_union stack_a stack_b in
+        let vals_heap_a,only_heap_b = nor_union heap_a heap_b in
+        let vals_register_a,only_register_b = nor_union register_a register_b in
+        let vals_constant_a,only_constant_b = nor_union constant_a constant_b in
+        let stack = Hashtbl.create 50 in
+        let heap = Hashtbl.create 50 in
+        let register = Hashtbl.create 50 in
+        let constant = Hashtbl.create 50 in
+        let add tbl l = List.iter (fun (k,v) -> Hashtbl.add tbl k v ) l in
+        let add_all tbl l1 l2 = 
+            let () = add tbl l1 in
+            add tbl l2 
+        in
+        let () = add_all stack vals_stack_a only_stack_b in
+        let () = add_all heap vals_heap_a only_heap_b in
+        let () = add_all register vals_register_a only_register_b in
+        let () = add_all constant vals_constant_a only_constant_b in
+        {stack = stack; heap = heap ; constant = constant; register= register}
 
-    let set_value absenvs name values =
-        try
+ (*   let get_tbl abs name = 
+        match name with
+        | Reg _ -> abs.register
+        | BaseOffset b ->
+            match b.base with
+            | Constant -> abs.constant
+            | HE _ -> abs.heap 
+            | Init _ -> abs.stack*)
+
+    let set_value abs name values =
+        let () =
+            match name with
+            | Reg r -> set_register abs r values
+            | BaseOffset b ->
+                match b.base with
+                | Constant -> set_constant abs b.offset values
+                | HE c -> set_he abs c.base_chunk b.offset c.type_chunk c values 
+                | Init r -> set_stack abs r b.offset values
+        in abs
+(*        try
             let elem=List.find (fun x -> same_name x.name name) absenvs in
             elem.values <- values;
             absenvs
         with
-        Not_found -> {name=name;values=values}::absenvs
+        Not_found -> {name=name;values=values}::absenvs*)
         
     let get_integer_values vs =
         match vs with 
@@ -464,30 +622,38 @@ struct
                 List.concat offsets
         | TOP -> [None]
 
-    let get_value absenvs name =
+    let get_value_unsafe abs name =
+        let vals = 
+            match name with
+            | Reg r -> get_register abs r 
+            | BaseOffset b ->
+                match b.base with
+                | Constant -> get_constant abs b.offset
+                | HE c -> get_he abs c.base_chunk b.offset c.type_chunk 
+                | Init r -> get_stack abs r b.offset
+        in match vals with
+        | Values vals -> Values (copy_vals vals)
+        | TOP -> TOP
+ 
+    let get_value abs name =
         try
-            let elem=(List.find (fun x -> same_name x.name name) absenvs) in
-            let vals=elem.values in
-            match vals with
-            | Values v -> Values (copy_vals v)
-            | TOP -> TOP
+           get_value_unsafe abs name 
         with
-             Not_found -> Values ([]);;
+             Not_found ->  Values ([]);;
 
     (* same as get_value, but create values if not found *)
-    let get_value_create absenvs name n state=
+    let get_value_create abs name n state=
         try
-            let elem=(List.find (fun x -> same_name x.name name) absenvs) in
-            let vals=elem.values in
+            let vals = get_value_unsafe abs name in 
             match vals with
-            | Values v -> (absenvs, Values (copy_vals v))
-            | TOP -> absenvs,TOP (* TODO should be change, and TOP check in values_to_names *)
+            | Values v -> (abs, Values (copy_vals v))
+            | TOP -> abs,TOP (* TODO should be change, and TOP check in values_to_names *)
             with
                 Not_found -> 
                     let () = n := (!n)+1 in
-                    let new_val = Values ([{base_vs= HE(init_chunk (!n) 1 state); offsets=Offsets([0])}  ])  in
-                    let new_absenvs = set_value absenvs name new_val in
-                    (new_absenvs,new_val);;
+                    let new_val = Values ([{base_vs= HE(init_chunk (!n) INIT state); offsets=Offsets([0])}  ])  in
+                    let abs = set_value abs name new_val in
+                    (abs,new_val);;
 
 
     let get_value_string absenvs name=
@@ -949,15 +1115,15 @@ struct
     (*
      * Check is esp or ebp took stranges values
      * *)
-    let filter_esp_ebp vsa verbose=
-        let val_ebp=get_value_string vsa "ebp" in
+    let filter_esp_ebp abs verbose=
+        let val_ebp=get_value_string abs "ebp" in
         let ()  = 
             match val_ebp with
             | TOP -> let () = if (verbose) then Printf.printf "Error Ebp = TOP\n" in
                      raise ERROR
             | Values _ -> ()
         in
-        let val_esp=get_value_string vsa "esp" in
+        let val_esp=get_value_string abs "esp" in
         match val_esp with
             | TOP -> let () = if (verbose) then Printf.printf("Error ! \n") in raise ERROR
             | Values v -> 
@@ -969,20 +1135,20 @@ struct
                         if ((List.length o) != 1) then let () = if (verbose) then Printf.printf("Error4 ! \n") in raise ERROR
                         else
                             let offset=List.hd (o) in
-                            List.filter 
-                                (fun x ->
-                                    match x.name with
-                                    | BaseOffset b -> 
-                                    (
-                                        match b.base with
-                                        | Init "esp" ->
-                                            if(b.offset <0xf0000000) then true (* case when for example esp + 0x4, because esp init =0 *)
-                                            else if (b.offset<offset) then false
-                                            else true
-                                        | HE _ | Constant | Init _ -> true
-                                    )
-                                    | Reg _  -> true
-                                ) vsa;;
+(*                            List.filter *)
+                            let stack = abs.stack in
+                            let out_of_scope = Hashtbl.fold
+                                (fun (name,b_offset) _ l ->
+                                    match name with
+                                    | "esp" ->
+                                            if(b_offset <0xf0000000) then l (* case when for example esp + 0x4, because esp init =0 *)
+                                            else if (b_offset<offset) then ((name,b_offset)::l)
+                                            else l
+                                    | _  -> l
+                                ) stack [] 
+                            in 
+                            let () = List.iter (fun x -> Hashtbl.remove stack x ) out_of_scope in
+                            {stack = stack; register = abs.register ; constant = abs.constant ; heap = abs.heap}
 
     (* 
      * Restore in v1 stack frame values from v2
@@ -1048,8 +1214,16 @@ struct
          | TOP -> ()
          | Values vs -> List.iter clean_vs vs ;;*)
 
-    let clean_vsa list_vsa = 
-        List.iter (fun x -> (*let () = clean_vss x.values in*) x.values<-TOP) list_vsa;;
+    let clean_vsa abs = 
+        let clean tbl = Hashtbl.reset tbl in
+        let heap = abs.heap in
+        let stack = abs.stack in
+        let constant = abs.constant in
+        let register = abs.register in
+        let () = clean heap in
+        let () = clean stack in
+        let () = clean constant in
+        clean register
    
     let restore_esp vsa =
         let val_esp=get_value_string vsa "esp" in

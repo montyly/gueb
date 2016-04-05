@@ -25,7 +25,7 @@ module My_Graph (Absenv_v : AbsEnvGenerique) (Ir_a : IR) (Stubfunc_a : Stubfunc)
 struct
 
     exception ERROR;;
-    exception NOT_RET of (Absenv_v.absenv list)*(Absenv_v.he list)*(Absenv_v.he list)*bool;;
+    exception NOT_RET of (Absenv_v.absenv)*(Absenv_v.he list)*(Absenv_v.he list)*bool;;
     exception NOT_RET_NOT_LEAF;;
     exception Timeout_unloop;;
     exception MAX_EXPLORE;;
@@ -37,8 +37,8 @@ struct
         addr : int ;
         stmt : Ir_v.ir_stmt;
         mutable type_node : int;
-        mutable init : Absenv_v.absenv list;
-        mutable vsa : Absenv_v.absenv list;
+        mutable init : Absenv_v.absenv;
+        mutable vsa : Absenv_v.absenv;
         mutable ha : Absenv_v.he list;
         mutable hf : Absenv_v.he list;
     };;
@@ -126,7 +126,7 @@ struct
      *  (id,size)  *   free sites  * malloc site * use sites
      * key is chunk * free site, because from a same malloc, different free that lead to different uaf 
      * *)
-    let sg_uaf = ((Hashtbl.create 100) : (( (int*int) * (((site*site_type) list) list)   , ((site*site_type) list) *   (((site*site_type) list) list) ) Hashtbl.t )) ;;
+    let sg_uaf = ((Hashtbl.create 100) : (( (int*Absenv_v.chunk_t) * (((site*site_type) list) list)   , ((site*site_type) list) *   (((site*site_type) list) list) ) Hashtbl.t )) ;;
 
 
 
@@ -293,7 +293,7 @@ struct
 
     let create_nodes arg =
         let (stmt,addr,_unloop)=arg in
-        {addr=addr;stmt=stmt;type_node=type_NODE_NORMAL;init = [] ; vsa=[];ha=[];hf=[]};;
+        {addr=addr;stmt=stmt;type_node=type_NODE_NORMAL;init = Absenv_v.initAbsenEnv () ; vsa=Absenv_v.initAbsenEnv ();ha=[];hf=[]};;
    
     let create_bbs_nodes list_nodes list_bb =
         let find list_addr list_nodes=List.find_all (fun n -> List.exists (fun x -> x=n.addr) list_addr) list_nodes in
@@ -704,7 +704,7 @@ struct
     let rec clean_vsa_nodes nodes = 
         match nodes with
         | [] -> ()
-        | hd::tl -> let () = hd.vsa <- [] in
+        | hd::tl -> let () = hd.vsa <- Absenv_v.initAbsenEnv () in
                     let () = hd.ha <- [] in
                     let () = hd.hf <- [] in
                     clean_vsa_nodes tl 
@@ -838,7 +838,7 @@ struct
         | [] -> ()
         | hd::tl -> 
             let () = Absenv_v.clean_vsa hd.vsa in
-            let () = hd.vsa<-[] in
+            let () = hd.vsa<- Absenv_v.initAbsenEnv ()in
             let () = hd.ha<-[] in 
             let () = hd.hf<-[] in
             (
@@ -1077,7 +1077,7 @@ struct
         let value_analysis_nodes_rec n fathers bb_ori=
            
              (* Put init values *)
-            let () = n.vsa<-Absenv_v.update n.init (merge_father fathers []) in
+            let () = n.vsa<-Absenv_v.update n.init (merge_father fathers (Absenv_v.initAbsenEnv ())) in
             (* Merge values from fathers *)
             let (ha,hf) = merge_fathers_heap fathers n.ha n.hf in
             (* Merge chunk values *)
@@ -1109,7 +1109,7 @@ struct
                         let () = if (List.exists (fun x-> x=a) malloc_addr) then
                             let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
                             let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
-                            let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
+                            let () = n.ha <- (Absenv_v.init_chunk !number_chunk (Absenv_v.classical_chunk()) new_state) :: n.ha in
                             number_chunk:=!number_chunk+1 in
                         let () = if(verbose) then Printf.printf "Call Free %x %s | %s \n" n.addr func_name (String.concat " " (List.map print_backtrack backtrack )) in
                         try 
@@ -1145,7 +1145,7 @@ struct
                     else if (List.exists (fun x-> x=a) malloc_addr) then
                         let new_state = ((n.addr,bb_ori.unloop),func_name,(!current_call))::backtrack in
                         let () = n.vsa <-Absenv_v.update  (Absenv_v.init_malloc ( !number_chunk) new_state )  n.vsa in
-                        let () = n.ha <- (Absenv_v.init_chunk !number_chunk 0 new_state) :: n.ha in
+                        let () = n.ha <- (Absenv_v.init_chunk !number_chunk (Absenv_v.classical_chunk()) new_state) :: n.ha in
                         let () = number_chunk:=!number_chunk+1 in
                         n.vsa <- Absenv_v.restore_esp n.vsa 
                     else
@@ -1705,7 +1705,7 @@ struct
         with
             _ -> ()
         in
-        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*int  ,  ( ((site*site_type) list *  (((site*site_type) list) list) * (((site*site_type) list) list)) ) list ) Hashtbl.t ))  in
+        let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*Absenv_v.chunk_t  ,  ( ((site*site_type) list *  (((site*site_type) list) list) * (((site*site_type) list) list)) ) list ) Hashtbl.t ))  in
         (* first ordone result by alloc, not by free *)
         let () =
             Hashtbl.iter 
@@ -1720,14 +1720,7 @@ struct
         let () = Printf.printf "Results, uaf found : \n\n" in
         Hashtbl.iter 
             (fun (chunk_id,chunk_type) elems -> 
-                let str =       
-                begin 
-                    match chunk_type with
-                    | 0 -> "chunk"
-                    | 1 -> "init_val"
-                    | _ -> "unknow"
-                end
-                in
+                let str = Absenv_v.pp_chunk_t chunk_type in
                 let n = ref 0 in
                 List.iter (fun (alloc,free,use) ->
                         let () = Hashtbl.clear already_seen in

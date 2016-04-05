@@ -2,7 +2,7 @@ open Absenv;;
 
 module type Stubfunc = functor (Absenv_v : AbsEnvGenerique) ->
 sig
-   val stub : int -> Absenv_v.absenv list -> Absenv_v.he list -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list ->  bool * Absenv_v.absenv list * Absenv_v.he list * Absenv_v.he list
+   val stub : int -> Absenv_v.absenv -> Absenv_v.he list -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list ->  bool * Absenv_v.absenv * Absenv_v.he list * Absenv_v.he list
 
 end ;;
 
@@ -71,9 +71,9 @@ struct
 
     let call_jas_matrix vsa ha hf number_chunk _addr _func_name _call_number backtrack =
         try
-            let new_chunk = (Absenv_v.init_vs_chunk ( !number_chunk) 0 backtrack) in
+            let new_chunk = (Absenv_v.init_vs_chunk ( !number_chunk) (Absenv_v.classical_chunk()) backtrack) in
             let vsa = Absenv_v.set_value_string vsa "eax" new_chunk in
-            let ha=(Absenv_v.init_chunk !number_chunk 0 backtrack)::ha  in
+            let ha=(Absenv_v.init_chunk !number_chunk (Absenv_v.classical_chunk()) backtrack)::ha  in
             let () = number_chunk:=!number_chunk+1 in
             true,(restore_esp vsa),ha,hf
         with                        
@@ -104,7 +104,7 @@ struct
         try
             let vsa = restore_esp vsa in
             (* We create a new chunk*)
-            let new_chunk = (Absenv_v.init_vs_chunk ( !number_chunk) 0 backtrack) in
+            let new_chunk = (Absenv_v.init_vs_chunk ( !number_chunk) (Absenv_v.classical_chunk()) backtrack) in
             (* We look for the value stored in the third argument *)
             (* First we get the value of esp *)
             let val_esp=Absenv_v.get_value_string vsa "esp" in  
@@ -117,7 +117,7 @@ struct
             (* We put the new chunk in the third arg *)
             let vsa = Absenv_v.set_value vsa third_arg new_chunk in
             (* We add a the new chunk in ha *)
-            let ha=(Absenv_v.init_chunk !number_chunk 0 backtrack)::ha  in
+            let ha=(Absenv_v.init_chunk !number_chunk (Absenv_v.classical_chunk()) backtrack)::ha  in
             let () = number_chunk:=!number_chunk+1 in
             (* the first boolean means to the caller that the function was stubbed *)
             true,vsa,ha,hf

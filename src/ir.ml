@@ -19,12 +19,12 @@ sig
     val parse_func_protobuf :  Program_piqi.function_-> (int*(int list)) list * (int * int) list * int * int  * (ir_stmt*int*int) list * (int list * int list)
     val parse_func_protobuf_number_unloop :  Program_piqi.function_-> int                    (* bbs,connection_unfilter,eip, number_unloop,nodes,call_retn)  *)
 
-    val get_value_jump : ir_stmt -> Absenv_v.absenv list -> int option
+    val get_value_jump : ir_stmt -> Absenv_v.absenv -> int option
     val get_first_arg: ir_stmt -> int option
-    val function_transfer : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list -> Absenv_v.absenv list
-    val access_heap : ir_stmt -> Absenv_v.absenv list -> Absenv_v.he list
-    val check_uaf : (ir_stmt*Absenv_v.absenv list*Absenv_v.he list*(int*int)) -> (ir_stmt*Absenv_v.he list *(int*int)) option 
-    val score_heap_use : (ir_stmt*Absenv_v.absenv list) -> bool  (*TODO use with hashmap *)
+    val function_transfer : ir_stmt -> Absenv_v.absenv -> Absenv_v.he list -> int ref -> (int*int) -> string -> int -> ((int*int)*string*int) list -> Absenv_v.absenv
+    val access_heap : ir_stmt -> Absenv_v.absenv -> Absenv_v.he list
+    val check_uaf : (ir_stmt*Absenv_v.absenv*Absenv_v.he list*(int*int)) -> (ir_stmt*Absenv_v.he list *(int*int)) option 
+    val score_heap_use : (ir_stmt*Absenv_v.absenv) -> bool  (*TODO use with hashmap *)
     
 end ;;
 

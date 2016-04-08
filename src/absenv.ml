@@ -383,63 +383,11 @@ struct
         let () = set_he abs n 0 NORMAL chunk vals in
         let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
         abs
-        (*
-        [   {name=;values=};
-            init_reg_val "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=0;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }]))
-            ];;*)
-
-    (* Return elems that are not in both absenv (a nor b )  *)
-(*    let diff a b =
-
-        
-
-        let rec diff_name a b l= 
-            match a with
-            | [] -> l
-            | tl::hd -> if List.exists (fun x -> same_name tl.name x.name) b then diff_name hd b l
-                        else diff_name hd b (({name=tl.name;values=copy_valsset tl.values})::l)
-        in
-        (diff_name a b [])@(diff_name b a []);;*)
-
-    (* Return a union b*)
-   (* let union a b = 
-        let rec same_rec a b l = 
-            match a with
-            | [] -> l
-            | tl::hd -> 
-                try
-                    let abs=List.find (fun x -> same_name tl.name x.name) b in (* TODO list.filter if more than one elem = *)
-                    match (abs.values,tl.values) with
-                    | (TOP,v) | (v,TOP) -> same_rec hd b ((tl.name, (v))::l) (* If A union B, and A TOP, keep B *)
-                    | (Values v1,Values v2) -> same_rec hd b ((tl.name,(Values (v1@v2)))::l)
-                    with Not_found -> same_rec hd b l
-        in same_rec a b [];;*)
-
-    (* return names that are both in a and b, but keep values from a *)
-  (*  let inter a b = 
-        let rec same_rec a b l = 
-            match a with
-            | [] -> l
-            | tl::hd -> 
-                if (List.exists (fun x -> same_name tl.name x.name) b) then same_rec hd b ((tl.name,tl.values)::l)
-                else  same_rec hd b l
-        in
-            same_rec a b [];;*)
 
     let append_offsets o1 o2 =
         match (o1,o2) with
         | TOP_Offsets,_ | _,TOP_Offsets -> raise TOP_OFFSETS
-        | Offsets o1,Offsets o2 ->
-        let rec dedup a l =
-            match a with 
-            | [] -> Offsets l
-            | tl::hd -> 
-                if List.for_all (fun x -> x!=tl) l then
-                    dedup hd (tl::l)
-                else
-                    dedup hd l
-        in
-        dedup (o1@o2) [];;
+        | Offsets o1,Offsets o2 -> Offsets (List.sort_uniq (fun a b -> compare a b)  (o1@o2))
 
     let merge_offsets o =
         let rec merge_offsets_rec o l =

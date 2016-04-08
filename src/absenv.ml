@@ -141,11 +141,97 @@ struct
             mutable values : valuesSet;
         };;*)
 
+    let equal_off (o1:offset) (o2:offset) = o1 = o2
+    let equal_chunk_t (c1:chunk_t) (c2:chunk_t) = c1 = c2
+    let equal_register (r1:register) (r2:register) = r1 = r2
+
+    module HashHeap = Hashtbl.Make (struct 
+        type t = (int*offset*chunk_t) 
+        let equal (id1,of1,t1) (id2,of2,t2) = (equal_chunk_t t1 t2 ) && (id1 = id2) && (equal_off of1 of2)
+        let hash = Hashtbl.hash
+    end)
+
+    module HashStack = Hashtbl.Make (struct 
+        type t = register * offset
+        let equal (r1,of1) (r2,of2) = (equal_register r1 r2) && (equal_off of1 of2)
+        let hash = Hashtbl.hash
+    end)
+
+    module HashConstant = Hashtbl.Make (struct 
+        type t = offset 
+        let equal o1 o2 = equal_off o1 o2
+        let hash n = n
+    end)
+
+    module HashRegister = Hashtbl.Make (struct 
+        type t = register 
+        let equal r1 r2 = equal_register r1 r2 
+        let hash r = 
+            match r with
+            |"esp"-> 0
+            |"ebp"-> 1
+            |"ecx"-> 2
+            |"edx"-> 3
+            |"ebx"-> 4
+            |"edi"-> 5
+            |"esi"-> 6
+            |"eip"-> 7
+            |"eax"-> 8
+            |"t0"-> 9
+            |"t1"-> 10
+            |"t2"-> 11
+            |"t3"-> 12
+            |"t4"-> 13
+            |"t5"-> 14
+            |"t6"-> 15
+            |"t7"-> 16
+            |"t8"-> 17
+            |"t9"-> 18
+            |"t10"-> 19
+            |"t11"-> 20
+            |"t12"-> 21
+            |"t13"-> 22
+            |"t14"-> 23
+            |"t15"-> 24
+            |"t16"-> 25
+            |"t17"-> 26
+            |"t18"-> 27
+            |"t19"-> 28
+            |"t20"-> 29
+            |"t21"-> 30
+            |"t22"-> 31
+            |"t23"-> 32
+            |"t24"-> 33
+            |"t25"-> 34
+            |"t26"-> 35
+            |"t27"-> 36
+            |"t28"-> 37
+            |"t29"-> 38
+            |"t30"-> 39
+            |"t31"-> 40
+            |"t32"-> 41
+            |"t33"-> 42
+            |"t34"-> 43
+            |"t35"-> 44
+            |"t36"-> 45
+            |"t37"-> 46
+            |"t38"-> 47
+            |"t39"-> 48
+            |"CF"-> 49
+            |"OF"-> 50
+            |"SF"-> 51
+            |"DF"-> 52
+            |"ZF"-> 53
+            |"dsbase"-> 54
+            |"ssbase"-> 55
+            | v -> Hashtbl.hash v
+    end)
+
     type absenv = {
-            heap : ((int * offset * chunk_t), (chunk * valuesSet)) Hashtbl.t; (* chunk_id * offset * type -> chunk * valuesset *)
-            stack : ((register * offset ), valuesSet) Hashtbl.t ; (* register_init_name * offset -> valuesset *)
-            constant : (offset, valuesSet) Hashtbl.t; (* offset -> valuesset *)
-            register : (register, valuesSet) Hashtbl.t; (* register_name -> valuesSet*)
+            heap : (chunk * valuesSet) HashHeap.t; (* chunk_id * offset * type -> chunk * valuesset *)
+            stack : (valuesSet) HashStack.t ; (* register_init_name * offset -> valuesset *)
+            constant : (valuesSet) HashConstant.t; (* offset -> valuesset *)
+            register : (valuesSet) HashRegister.t; (* register_name -> valuesSet*)
         };;
 
     let classical_chunk () = NORMAL
@@ -289,10 +375,10 @@ struct
         let stack = abs.stack in
         let constant = abs.constant in
         let register = abs.register in
-        let txt = Hashtbl.fold (fun reg values txt -> txt ^"\t"^(pp_register reg )^" : "^(pp_valuesset values)^"\n" ) register "Register\n" in
-        let txt = Hashtbl.fold (fun (reg,off) values txt -> txt ^"\t"^(pp_register reg) ^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) stack (Printf.sprintf "%sStack\n" txt) in
-        let txt = Hashtbl.fold (fun (_,off,_) (chunk,values) txt -> txt ^"\t"^(pp_chunk chunk)^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) heap (Printf.sprintf "%sHeap\n" txt) in
-        Hashtbl.fold (fun off values txt -> txt ^"\t"^(pp_cst)^" "^( pp_offset off )^" : "^(pp_valuesset values)^"\n" ) constant (Printf.sprintf "%sConstant\n" txt) 
+        let txt = HashRegister.fold (fun reg values txt -> txt ^"\t"^(pp_register reg )^" : "^(pp_valuesset values)^"\n" ) register "Register\n" in
+        let txt = HashStack.fold (fun (reg,off) values txt -> txt ^"\t"^(pp_register reg) ^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) stack (Printf.sprintf "%sStack\n" txt) in
+        let txt = HashHeap.fold (fun (_,off,_) (chunk,values) txt -> txt ^"\t"^(pp_chunk chunk)^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) heap (Printf.sprintf "%sHeap\n" txt) in
+        HashConstant.fold (fun off values txt -> txt ^"\t"^(pp_cst)^" "^( pp_offset off )^" : "^(pp_valuesset values)^"\n" ) constant (Printf.sprintf "%sConstant\n" txt) 
 
     let copy_vals v=
         let rec copy_vals_rec v l= 
@@ -307,45 +393,45 @@ struct
         | Values v -> Values (copy_vals v);;
 
     (* other if you want to have one ESP per function*)
-    let initAbsenEnv () = {stack = Hashtbl.create 50; heap = Hashtbl.create 50; register = Hashtbl.create 50; constant = Hashtbl.create 50};;
+    let initAbsenEnv () = {stack = HashStack.create 50; heap = HashHeap.create 50; register = HashRegister.create 50; constant = HashConstant.create 50};;
 
     let get_he abs id offset t =
         let tbl = abs.heap in
-        let _,res = Hashtbl.find tbl (id,offset,t) in
+        let _,res = HashHeap.find tbl (id,offset,t) in
         res
  
     let get_he_chunk abs id offset t =
         let tbl = abs.heap in
-        let res,_ = Hashtbl.find tbl (id,offset,t) in
+        let res,_ = HashHeap.find tbl (id,offset,t) in
         res
 
     let get_stack abs reg offset  =
         let tbl = abs.stack in
-        Hashtbl.find tbl (reg,offset) 
+        HashStack.find tbl (reg,offset) 
     
     let get_constant abs offset =
         let tbl = abs.constant in
-        Hashtbl.find tbl (offset) 
+        HashConstant.find tbl (offset) 
 
     let get_register abs reg  =
         let tbl = abs.register in
-        Hashtbl.find tbl (reg) 
+        HashRegister.find tbl (reg) 
 
     let set_he abs id offset t chunk vs =
         let tbl = abs.heap in
-        Hashtbl.replace tbl (id,offset,t) (chunk,vs)
+        HashHeap.replace tbl (id,offset,t) (chunk,vs)
     
     let set_stack abs reg offset vs =
         let tbl = abs.stack in
-        Hashtbl.replace tbl (reg,offset) (vs)
+        HashStack.replace tbl (reg,offset) (vs)
     
     let set_constant abs offset vs =
         let tbl = abs.constant in
-        Hashtbl.replace tbl (offset) (vs)
+        HashConstant.replace tbl (offset) (vs)
 
     let set_register abs reg vs =
         let tbl = abs.register in
-        Hashtbl.replace tbl (reg) (vs)
+        HashRegister.replace tbl (reg) (vs)
  
     let init_reg abs r =
         set_register abs r (Values ([{base_vs=Init (r);offsets=Offsets [0]}]))
@@ -404,7 +490,7 @@ struct
         let rec merge_he_rec h l =
             match h with
             | [] -> l
-            | hd::tl -> merge_he_rec (List.filter (fun x ->  hd.type_chunk != x.type_chunk ||  x.base_chunk!=hd.base_chunk ) tl)  (hd::l)
+            | hd::tl -> merge_he_rec (List.filter (fun x ->  hd.type_chunk <> x.type_chunk ||  x.base_chunk<>hd.base_chunk ) tl)  (hd::l)
         in merge_he_rec (h1@h2) [];;
             
     let merge_alloc_free_conservatif ha hf =
@@ -451,15 +537,8 @@ struct
         match (v1,v2) with
         | TOP,v | v,TOP -> v
         | Values v1, Values v2 -> merge_values (Values (v1@v2));;   
-  (*  let merge_abs abs =
-        let rec merge_rec abs l=
-            match abs with
-            | [] -> l
-            | (name,values)::hd -> 
-            merge_rec hd ({name=name;values=merge_values values}::l)
-        in
-            merge_rec abs [];;*)
 
+    (* should may be use first class module here ? *)
     let merge a b =  
         let stack_a = a.stack in
         let heap_a = a.heap in
@@ -469,37 +548,38 @@ struct
         let heap_b = b.heap in
         let constant_b = b.constant in
         let register_b = b.register in
-        let nor_union a b = 
-            let only_a = Hashtbl.fold (fun k v l -> try let _ =  Hashtbl.find b k in l with Not_found -> (k,v)::l) a [] in
-            let only_b, both = Hashtbl.fold (fun k v1 (l1,l2) -> try let v2 =  Hashtbl.find a k in (l1,(k,v1,v2)::l2) with Not_found -> ((k,v1)::l1,l2)) b ([],[]) in
+        let nor_union a b hash_fold hash_fold2 hash_find hash_mem = 
+            let only_a = hash_fold (fun k v l -> if ( hash_mem b k) then l else (k,v)::l) a [] in        
+            let only_b, both = hash_fold2 (fun k v1 (l1,l2) -> try let v2 =  hash_find a k in (l1,(k,v1,v2)::l2) with Not_found -> ((k,v1)::l1,l2)) b ([],[]) in
             only_a,only_b,both
         in
-        let only_stack_a,only_stack_b,both_stack = nor_union stack_a stack_b in
-        let only_heap_a,only_heap_b,both_heap = nor_union heap_a heap_b in
-        let only_register_a,only_register_b,both_register = nor_union register_a register_b in
-        let only_constant_a,only_constant_b,both_constant = nor_union constant_a constant_b in
-        let stack = Hashtbl.create 50 in
-        let heap = Hashtbl.create 50 in
-        let register = Hashtbl.create 50 in
-        let constant = Hashtbl.create 50 in
-        let add tbl l = List.iter (fun (k,v) -> Hashtbl.add tbl k v ) l in
-        let add_merge tbl l = List.iter (fun (k,v1,v2) -> Hashtbl.add tbl k (merge_values_two v1 v2) ) l in
-        let add_merge_he tbl l = List.iter (fun (k,(c1,v1),(_c2,v2)) -> Hashtbl.add tbl k (c1,(merge_values_two v1 v2)) ) l in (* TODO should check that c1 = c2 ? *)
-        let add_all tbl l1 l2 b = 
-            let () = add tbl l1 in
-            let () = add tbl l2 in
-            add_merge tbl b in
-        let add_he tbl l1 l2 b = 
-            let () = add tbl l1 in
-            let () = add tbl l2 in
-            add_merge_he tbl b in
-        let () = add_all stack only_stack_a only_stack_b both_stack in
-        let () = add_all register only_register_a only_register_b both_register in
-        let () = add_all constant only_constant_a only_constant_b both_constant in
-        let () = add_he heap only_heap_a only_heap_b both_heap in
+        let only_stack_a,only_stack_b,both_stack = nor_union stack_a stack_b (HashStack.fold) (HashStack.fold) (HashStack.find) (HashStack.mem)in
+        let only_heap_a,only_heap_b,both_heap = nor_union heap_a heap_b (HashHeap.fold) (HashHeap.fold) (HashHeap.find) (HashHeap.mem) in
+        let only_register_a,only_register_b,both_register = nor_union register_a register_b (HashRegister.fold) (HashRegister.fold) (HashRegister.find) (HashRegister.mem) in
+        let only_constant_a,only_constant_b,both_constant = nor_union constant_a constant_b (HashConstant.fold) (HashConstant.fold) (HashConstant.find) (HashConstant.mem) in
+        let stack = HashStack.create 50 in
+        let heap = HashHeap.create 50 in
+        let register = HashRegister.create 50 in
+        let constant = HashConstant.create 50 in
+        let add tbl l add_func = List.iter (fun (k,v) -> add_func tbl k v ) l in
+        let add_merge tbl l add_func = List.iter (fun (k,v1,v2) -> add_func tbl k (merge_values_two v1 v2) ) l in
+        let add_merge_he tbl l add_func = List.iter (fun (k,(c1,v1),(_c2,v2)) -> add_func tbl k (c1,(merge_values_two v1 v2)) ) l in (* TODO should check that c1 = c2 ? *)
+        let add_all tbl l1 l2 b add_func = 
+            let () = add tbl l1 add_func in
+            let () = add tbl l2 add_func in
+            add_merge tbl b add_func in
+        let add_he tbl l1 l2 b add_func = 
+            let () = add tbl l1 add_func in
+            let () = add tbl l2 add_func in
+            add_merge_he tbl b add_func in
+        let () = add_all stack only_stack_a only_stack_b both_stack (HashStack.add) in
+        let () = add_all register only_register_a only_register_b both_register (HashRegister.add) in
+        let () = add_all constant only_constant_a only_constant_b both_constant (HashConstant.add) in
+        let () = add_he heap only_heap_a only_heap_b both_heap (HashHeap.add) in
         {stack = stack; heap = heap ; constant = constant; register= register}
        
     (* merge a and b, if intersection, keeps a *) 
+    (* should may be use first class module here ? *)
     let update a b = 
         let stack_a = a.stack in
         let heap_a = a.heap in
@@ -509,28 +589,28 @@ struct
         let heap_b = b.heap in
         let constant_b = b.constant in
         let register_b = b.register in
-        let nor_union a b = (* in intersection, keeps a *)
-            let vals = Hashtbl.fold (fun k v l -> (k,v)::l) a [] in
-            let vals_b =  Hashtbl.fold (fun k v l -> try let _ =  Hashtbl.find a k in l with Not_found -> (k,v)::l) b [] in
+        let nor_union a b fold mem = (* in intersection, keeps a *)
+            let vals = fold (fun k v l -> (k,v)::l) a [] in
+            let vals_b =  fold (fun k v l -> if( mem a k) then l else (k,v)::l) b [] in
             vals,vals_b 
         in
-        let vals_stack_a,only_stack_b = nor_union stack_a stack_b in
-        let vals_heap_a,only_heap_b = nor_union heap_a heap_b in
-        let vals_register_a,only_register_b = nor_union register_a register_b in
-        let vals_constant_a,only_constant_b = nor_union constant_a constant_b in
-        let stack = Hashtbl.create 50 in
-        let heap = Hashtbl.create 50 in
-        let register = Hashtbl.create 50 in
-        let constant = Hashtbl.create 50 in
-        let add tbl l = List.iter (fun (k,v) -> Hashtbl.add tbl k v ) l in
-        let add_all tbl l1 l2 = 
-            let () = add tbl l1 in
-            add tbl l2 
+        let vals_stack_a,only_stack_b = nor_union stack_a stack_b (HashStack.fold) (HashStack.mem) in
+        let vals_heap_a,only_heap_b = nor_union heap_a heap_b (HashHeap.fold) (HashHeap.mem) in
+        let vals_register_a,only_register_b = nor_union register_a register_b (HashRegister.fold) (HashRegister.mem) in
+        let vals_constant_a,only_constant_b = nor_union constant_a constant_b (HashConstant.fold) (HashConstant.mem) in
+        let stack = HashStack.create 50 in
+        let heap = HashHeap.create 50 in
+        let register = HashRegister.create 50 in
+        let constant = HashConstant.create 50 in
+        let add tbl l add_func = List.iter (fun (k,v) -> add_func tbl k v ) l in
+        let add_all tbl l1 l2 add_func = 
+            let () = add tbl l1 add_func in
+            add tbl l2 add_func 
         in
-        let () = add_all stack vals_stack_a only_stack_b in
-        let () = add_all heap vals_heap_a only_heap_b in
-        let () = add_all register vals_register_a only_register_b in
-        let () = add_all constant vals_constant_a only_constant_b in
+        let () = add_all stack vals_stack_a only_stack_b (HashStack.add) in
+        let () = add_all heap vals_heap_a only_heap_b (HashHeap.add) in
+        let () = add_all register vals_register_a only_register_b (HashRegister.add) in
+        let () = add_all constant vals_constant_a only_constant_b (HashConstant.add)  in
         {stack = stack; heap = heap ; constant = constant; register= register}
 
  (*   let get_tbl abs name = 
@@ -707,7 +787,7 @@ struct
             | hd::tl -> div_offsets_rec o1 tl 
               (
                    (List.map 
-                        (fun x -> if(hd!=0) then x / hd  else x ) 
+                        (fun x -> if(hd<>0) then x / hd  else x ) 
                 o1)
              @l)
         in 
@@ -737,7 +817,7 @@ struct
             | hd::tl -> mod_offsets_rec o1 tl 
               (
                    (List.map 
-                        (fun x -> (if (hd !=0) then (mod) x hd else x ) )
+                        (fun x -> (if (hd <>0) then (mod) x hd else x ) )
                 o1)
              @l)
         in 
@@ -1075,17 +1155,17 @@ struct
         match val_esp with
             | TOP -> let () = if (verbose) then Printf.printf("Error ! \n") in raise ERROR
             | Values v -> 
-                if (List.length v) !=1 then let () = if (verbose) then Printf.printf("Error 2! \n") in raise ERROR
+                if (List.length v) <>1 then let () = if (verbose) then Printf.printf("Error 2! \n") in raise ERROR
                 else 
                     match ((List.hd v).offsets) with
                     | TOP_Offsets-> let () = if (verbose) then Printf.printf("Error3 ! \n") in  raise ERROR
                     | Offsets o -> 
-                        if ((List.length o) != 1) then let () = if (verbose) then Printf.printf("Error4 ! \n") in raise ERROR
+                        if ((List.length o) <> 1) then let () = if (verbose) then Printf.printf("Error4 ! \n") in raise ERROR
                         else
                             let offset=List.hd (o) in
 (*                            List.filter *)
                             let stack = abs.stack in
-                            let out_of_scope = Hashtbl.fold
+                            let out_of_scope = HashStack.fold
                                 (fun (name,b_offset) _ l ->
                                     match name with
                                     | "esp" ->
@@ -1095,7 +1175,7 @@ struct
                                     | _  -> l
                                 ) stack [] 
                             in 
-                            let () = List.iter (fun x -> Hashtbl.remove stack x ) out_of_scope in
+                            let () = List.iter (fun x -> HashStack.remove stack x ) out_of_scope in
                             {stack = stack; register = abs.register ; constant = abs.constant ; heap = abs.heap}
 
     (* 
@@ -1163,15 +1243,14 @@ struct
          | Values vs -> List.iter clean_vs vs ;;*)
 
     let clean_vsa abs = 
-        let clean tbl = Hashtbl.reset tbl in
         let heap = abs.heap in
         let stack = abs.stack in
         let constant = abs.constant in
         let register = abs.register in
-        let () = clean heap in
-        let () = clean stack in
-        let () = clean constant in
-        clean register
+        let () = HashHeap.reset heap in
+        let () = HashStack.reset stack in
+        let () = HashConstant.reset constant in
+        HashRegister.reset register
    
     let restore_esp vsa =
         let val_esp=get_value_string vsa "esp" in

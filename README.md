@@ -25,6 +25,8 @@ If you want to try GUEB easily (and skip the compilation part): [here](http://ww
 
 [Author](#author)
 
+[Thanks](#thx)
+
 ## <a name="how-to-compile"></a>How to compile
 --------------
 GUEB will not work on a 32 bits machine (for now).
@@ -164,3 +166,7 @@ Feist Josselin (josselin.feist [SPAM] imag.fr)
 This tool is a part of my thesis (for more information : http://www-verimag.imag.fr/~feist/)
 
 Team : http://www-verimag.imag.fr/~potet/code-secu-activities.html
+
+## <a name="thx"></a>Thanks
+-------------
+Benjamin Farinier (CEA) for these advices in Ocaml.

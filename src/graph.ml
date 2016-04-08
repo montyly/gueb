@@ -217,7 +217,7 @@ struct
         let find_leafs n = 
             let nodes = Hashtbl.find tbl n in
             let leafs = List.find_all (fun x -> List.length x.sons == 0) nodes in
-            let is_loop n = List.exists (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop != n.unloop)) nodes in
+            let is_loop n = List.exists (fun x -> (x.addr_bb = n.addr_bb) && (x.unloop <> n.unloop)) nodes in
             List.filter (fun x -> not (is_loop x)) leafs 
         in
         let txt = List.fold_left (
@@ -377,7 +377,7 @@ struct
     
     let find_entry_father nodes=
         let fathers=(List.concat (List.map (fun x -> x.fathers) nodes)) 
-           in List.filter (fun x -> List.for_all (fun y -> y.addr_bb!=x.addr_bb || x.unloop!=y.unloop) nodes) fathers ;;
+           in List.filter (fun x -> List.for_all (fun y -> y.addr_bb<>x.addr_bb || x.unloop<>y.unloop) nodes) fathers ;;
     
     let find_entry nodes head=
         let father_entry=find_entry_father nodes in
@@ -400,7 +400,7 @@ struct
             let arc_end=find_non_entry node.fathers stack in
                 List.map (fun x -> (node,x) ) arc_end;;
     
-    let nodes_not_in ori new_nodes= List.filter (fun x -> List.for_all (fun y -> y.addr_bb!=x.addr_bb) new_nodes) (ori);;
+    let nodes_not_in ori new_nodes= List.filter (fun x -> List.for_all (fun y -> y.addr_bb<>x.addr_bb) new_nodes) (ori);;
 
     let nodes_in ori new_nodes= List.filter (fun x -> List.exists (fun y -> y.addr_bb==x.addr_bb) ori) new_nodes;; 
     
@@ -415,7 +415,7 @@ struct
         in
         add_ori_rec ori new_nodes ((nodes_in ori new_nodes)@(nodes_not_in new_nodes ori));;
         
-    let remove_ori_no_check ori stop=List.filter (fun x -> x.addr_bb!=stop.addr_bb && x.unloop!=stop.unloop) ori;;
+    let remove_ori_no_check ori stop=List.filter (fun x -> x.addr_bb<>stop.addr_bb && x.unloop<>stop.unloop) ori;;
         
     let rec find_node_in_nodes node nodes =
          match nodes with
@@ -522,15 +522,15 @@ struct
     (** Kosaraju **)
     (* Filter son/father kosaraju *)
     let remove_on_one_node_son node addr unloop_number=
-        node.sons_kosaraju<-List.filter (fun x -> x.addr_bb!=addr || (x.addr_bb==addr && x.unloop != unloop_number) ) node.sons_kosaraju;;
+        node.sons_kosaraju<-List.filter (fun x -> x.addr_bb<>addr || (x.addr_bb==addr && x.unloop <> unloop_number) ) node.sons_kosaraju;;
     
     let remove_on_one_node_father node addr unloop_number=
-        node.fathers_kosaraju<-List.filter (fun x -> x.addr_bb!=addr || (x.addr_bb==addr && x.unloop != unloop_number) ) node.fathers_kosaraju;;
+        node.fathers_kosaraju<-List.filter (fun x -> x.addr_bb<>addr || (x.addr_bb==addr && x.unloop <> unloop_number) ) node.fathers_kosaraju;;
     
     (* Remove path kosaraju *)
     let remove_path stack node=
         let ()  = List.iter (fun x -> remove_on_one_node_father x node.addr_bb node.unloop) stack in
-        List.filter (fun x -> x.addr_bb!=node.addr_bb || x.unloop!=node.unloop) stack;;
+        List.filter (fun x -> x.addr_bb<>node.addr_bb || x.unloop<>node.unloop) stack;;
     
     (* Remove path from stack *)
     let rec remove_path_stack stack path =
@@ -606,8 +606,8 @@ struct
             fun x -> 
                     if (List.exists (fun x -> x.addr_bb = head.addr_bb) x.sons)  
                         then 
-                        let () = x.sons <- (List.find_all (fun x -> x.addr_bb != head.addr_bb) x.sons) in
-                        let () = head.fathers<-(List.find_all (fun y -> y.addr_bb != x.addr_bb) head.fathers) in
+                        let () = x.sons <- (List.find_all (fun x -> x.addr_bb <> head.addr_bb) x.sons) in
+                        let () = head.fathers<-(List.find_all (fun y -> y.addr_bb <> x.addr_bb) head.fathers) in
                         true
                    else false
             ) sc ;;
@@ -635,7 +635,7 @@ struct
                       ) nodes in
         let (n_first,nodes_first) = List.fold_left (fun (n_x,x) (n_y,y) -> if n_x<n_y then (n_x,x) else (n_y,y)) (List.hd list_nodes) (List.tl list_nodes) in
         List.iter (fun (n_x,n) ->   
-                        if(n_x!=n_first) then fix n nodes_first (n_x-n_first)
+                        if(n_x<>n_first) then fix n nodes_first (n_x-n_first)
                         else ()
                  ) list_nodes
     
@@ -716,7 +716,7 @@ struct
     
     let parse_protobuf_no_unloop func =
         let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
-        let connexion=List.filter (fun (x,y) -> x!=y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
+        let connexion=List.filter (fun (x,y) -> x<>y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
         let bb_nodes = List.map (fun x -> let (addr,list_nodes)=x in (create_bb addr,list_nodes)) bbs in
         let bbs_only=List.map (fun x-> let (a,_)=x in a)  bb_nodes in
         let bbs_connect= connect_bbs bbs_only connexion in
@@ -743,7 +743,7 @@ struct
     let parse_protobuf_number func number_unloop  =
 
             let (bbs,connexion_unfiltre,eip_addr,_,nodes,call_retn)=Ir_v.parse_func_protobuf func in
-            let connexion=List.filter (fun (x,y) -> x!=y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
+            let connexion=List.filter (fun (x,y) -> x<>y) connexion_unfiltre in (* TODO need to handle loop on himself ! *)
             let bb_nodes = List.map (fun x -> let (addr,list_nodes)=x in (create_bb addr,list_nodes)) bbs in
             let bbs_only=List.map (fun x-> let (a,_)=x in a)  bb_nodes in
             let bbs_connect= connect_bbs bbs_only connexion in
@@ -1275,7 +1275,7 @@ struct
         let retn_node=List.filter (fun x -> ((land) x.type_node type_NODE_RETN)>0) (List.concat (List.map (fun x -> x.nodes) func_bbs)) in
         let retn_bb=List.filter (fun bb -> List.exists (fun x-> ((land) x.type_node type_NODE_RETN)>0 ) bb.nodes) func_bbs in
         let () = 
-            if((flow_graph) && addr_caller != 0) then 
+            if((flow_graph) && addr_caller <> 0) then 
                 List.iter (fun x -> saved_ret_call := ((addr_caller,addr_caller_unloop), n_caller, (x.addr_bb,x.unloop), !current_call)::(!saved_ret_call)) retn_bb
         in
         match retn_node with
@@ -1344,7 +1344,7 @@ struct
             let () = bb.is_done<-true in
             let retn_bb=List.filter (fun bb -> List.exists (fun x-> ((land) x.type_node type_NODE_RETN)>0 ) bb.nodes) func_bbs in
             let () = 
-                if((flow_graph) && addr_caller != 0) then 
+                if((flow_graph) && addr_caller <> 0) then 
                 List.iter (fun x -> saved_ret_call := ((addr_caller,addr_caller_unloop), n_caller, (x.addr_bb,x.unloop), !current_call)::(!saved_ret_call)) retn_bb
             in
             List.iter explore_rec bb.sons 
@@ -1643,7 +1643,7 @@ struct
             let list_func = update_type_func list_func (alloc::(free@use)) in
             let list_arcs = List.concat (List.map (fun (_eip,bbst,_name,n) -> create_arc_bbs bbst n ) list_func) in
             let list_arcs = update_arcs list_arcs calls ret flow_graph_disjoint in
-            let list_arcs = List.filter (fun (a,_,b,_) -> a/0x100!=b/0x100) list_arcs in (* Remove loop on bb himself (can be introduce by REIL *)
+            let list_arcs = List.filter (fun (a,_,b,_) -> a/0x100<>b/0x100) list_arcs in (* Remove loop on bb himself (can be introduce by REIL *)
             (* list arc represents as hashtbl as opti for explore *)
             let arcs = (Hashtbl.create (List.length list_arcs) : ((int *int, (int* int) list) Hashtbl.t)) in
             (* invert for dst -> ori *)
@@ -1679,7 +1679,7 @@ struct
             let list_func = update_type_func list_func [] in
             let list_arcs = List.concat (List.map (fun (_eip,bbst,_name,n) -> create_arc_bbs bbst n ) list_func) in
             let list_arcs = update_arcs list_arcs calls ret flow_graph_disjoint in
-            let list_arcs = List.filter (fun (a,_,b,_) -> a/0x100!=b/0x100) list_arcs in (* Remove loop on bb himself (can be introduce by REIL *)
+            let list_arcs = List.filter (fun (a,_,b,_) -> a/0x100<>b/0x100) list_arcs in (* Remove loop on bb himself (can be introduce by REIL *)
             (* list arc represents as hashtbl as opti for explore *)
             let arcs = (Hashtbl.create (List.length list_arcs) : ((int *int, (int* int) list) Hashtbl.t)) in
             (* invert for dst -> ori *)

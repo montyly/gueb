@@ -51,11 +51,10 @@ struct
                 true,(restore_esp vsa),ha,hf
 
     let stub addr_call vsa ha hf _number_init addr func_name call_number backtrack  =
-        match addr_call with
-        | _ when addr_call = png_free -> call_png_free vsa ha hf addr func_name call_number backtrack 
-        | _ when addr_call = png_destroy -> call_png_destroy vsa ha hf addr func_name call_number backtrack
-        | _ when List.exists (fun x -> x=addr_call) skip -> true,(restore_esp vsa),ha,hf
-        | _ -> false,vsa,ha,hf
+        if (addr_call = png_free) then call_png_free vsa ha hf addr func_name call_number backtrack 
+        else if (addr_call = png_destroy) then  call_png_destroy vsa ha hf addr func_name call_number backtrack
+        else if (List.exists (fun x -> x=addr_call) skip) then true,(restore_esp vsa),ha,hf
+        else false,vsa,ha,hf
         
 end;;
 
@@ -81,11 +80,10 @@ struct
                 true,(restore_esp vsa),ha,hf
 
     let stub addr_call vsa ha hf number_init addr func_name call_number backtrack  =
-        match addr_call with
-        | _ when addr_call = jas_matrix_create -> call_jas_matrix vsa ha hf number_init addr func_name call_number backtrack 
-        | _ when addr_call = jas_iccattrtab_create -> call_jas_matrix vsa ha hf number_init addr func_name call_number backtrack 
-        | _ when List.exists (fun x -> x=addr_call) skip -> true,(restore_esp vsa),ha,hf
-        | _ -> false,vsa,ha,hf
+        if (addr_call = jas_matrix_create) then call_jas_matrix vsa ha hf number_init addr func_name call_number backtrack 
+        else if (addr_call = jas_iccattrtab_create) then call_jas_matrix vsa ha hf number_init addr func_name call_number backtrack 
+        else if (List.exists (fun x -> x=addr_call) skip) then true,(restore_esp vsa),ha,hf
+        else false,vsa,ha,hf
         
 end;;
 
@@ -126,9 +124,8 @@ struct
                 true,restore_esp vsa ,ha,hf
 
     let stub addr_call vsa ha hf number_init addr func_name call_number backtrack  =
-        match addr_call with
-        | _ when addr_call = gtk_tree_model_get -> call_gtk_tree_model_get vsa  ha hf number_init addr func_name call_number backtrack 
-        | _ -> false,vsa,ha,hf
+        if (addr_call = gtk_tree_model_get) then call_gtk_tree_model_get vsa  ha hf number_init addr func_name call_number backtrack 
+        else false,vsa,ha,hf
         
 end;;
 

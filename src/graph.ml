@@ -150,10 +150,10 @@ struct
    let pp_uaf st=
         let st = List.rev st in
         let pp (p,(addr,it),_f,_n) = (Printf.sprintf "%s%d%d" p (addr/0x100) it ) in
-        Printf.sprintf "%s" (List.fold_left (fun x y -> x^"->"^(pp y)) (pp (List.hd st)) (List.tl st));;
+        String.concat "->" (List.map (fun x -> pp x) st)
 
     let pp_uafs st =
-        List.fold_left (fun x y -> (pp_uaf y) ^ " \n " ^ x ) (pp_uaf (List.hd st)) (List.tl st);;
+        String.concat "\n" (List.map (fun x -> pp_uaf x) st)
 
     let pp_alloc (p,(addr,it),f,_n) = Printf.sprintf "%s%d%d[label=\"%s -> 0x%x:%d alloc\", style=filled,shape=\"box\", fillcolor=\"turquoise\"]" p (addr/0x100) it f (addr/0x100) it
     
@@ -198,7 +198,7 @@ struct
             let access_heap = 
                 if(List.length access_heap > 0)
                 then
-                     Printf.sprintf "\\nAccessHeap %s" (List.fold_left (fun x y -> Printf.sprintf "%s %s" x y) "" access_heap) 
+                     Printf.sprintf "\\nAccessHeap %s" (String.concat " " access_heap) 
                 else Printf.sprintf "" 
             in
             let txt = Printf.sprintf "%03d%d[label=\"%d : %x%s\"]\n" (counter) bb.addr_bb counter bb.addr_bb access_heap in
@@ -1315,7 +1315,7 @@ struct
                                    let () = ref_count := (!ref_count)+1 in
                                    let  () = if (show_call) 
                                         then
-                                        Printf.printf "call %x:%d %s | %s\n" n.addr bb_ori.unloop  func_name (List.fold_left (fun x y -> x^" "^y) "" backtrack) 
+                                        Printf.printf "call %x:%d %s | %s\n" n.addr bb_ori.unloop  func_name (String.concat " " backtrack) 
                                     in
                                 let number_call_prev = (!current_call) in
                                 let () = 
@@ -1420,7 +1420,7 @@ struct
     let print_bbt_gml oc (bb,t) _f n id_node=
         let addr = bb.addr_bb/0x100 in
         let last_addr = (List.nth bb.nodes ((List.length bb.nodes)-1)).addr/0x100 in
-        let print_nodes n = List.fold_left (fun x y -> Printf.sprintf "%s,%x" x (y.addr/0x100)) (Printf.sprintf "%x" ((List.hd n).addr/0x100)) (List.tl n) in
+        let print_nodes n = String.concat "," (List.map (fun x -> Printf.sprintf "%x" (x.addr/0x100))n) in
         let id_node_val = (Hashtbl.length id_node)  in
         let () = Hashtbl.add id_node (n,addr) id_node_val in
         let print oc n id_node_val nodes addr t = Printf.fprintf oc "node [ \n id %d \n addr %d \n call %d \n addrlast %d \n nodes \"%s\" \n label \"0x%x\" \n type \"%s\" \n callsite \"%s\"\n]\n" id_node_val addr n last_addr nodes addr t (export_callsite n) in

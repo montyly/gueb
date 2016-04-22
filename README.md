@@ -25,7 +25,7 @@ If you want to try GUEB easily (and skip the compilation part): [here](http://ww
 
 [Author](#author)
 
-[Thanks](#thx)
+[Thanks](#thanks)
 
 ## <a name="how-to-compile"></a>How to compile
 --------------
@@ -167,6 +167,6 @@ This tool is a part of my thesis (for more information : http://www-verimag.imag
 
 Team : http://www-verimag.imag.fr/~potet/code-secu-activities.html
 
-## <a name="thx"></a>Thanks
+## <a name="thanks"></a>Thanks
 -------------
 Benjamin Farinier (CEA) for these advices in Ocaml.

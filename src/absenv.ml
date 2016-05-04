@@ -304,10 +304,10 @@ struct
         "Cst" ;;
 
     let pp_state st=
-        Printf.sprintf "%s" (List.fold_left (fun x ((addr,it),f,_n) -> x^" "^(Printf.sprintf "0x%x:%d:%s" addr it f)) "" st);;
+        String.concat " " (List.map (fun ((addr,it),f,_n) -> (Printf.sprintf "0x%x:%d:%s" addr it f) ) st)
    
     let pp_states st =
-        List.fold_left (fun x y -> (pp_state y) ^ " | " ^ x ) "" st;;
+        String.concat " | " (List.map (fun x -> pp_state x ) st )
  
     let pp_chunk_full he =
         let str= 
@@ -335,7 +335,7 @@ struct
         str^(string_of_int he.base_chunk);;
     
     let pp_he h =
-        List.fold_left  (fun x y-> x^" \n\t"^(pp_chunk_full y)) "\t" h;;
+        "\t"^(String.concat " \n\t" (List.map (fun x -> pp_chunk_full x) h))
 
     let pp_base b=
         match b with    
@@ -359,13 +359,13 @@ struct
 
     let pp_valueset vs=
         match vs.offsets with
-        | Offsets offsets -> pp_base vs.base_vs ^" "^ (List.fold_left (fun x y -> x^" "^y) "+ [" (List.map pp_offset offsets))^" ]"
+        | Offsets offsets -> pp_base vs.base_vs ^" + ["^(String.concat " " (List.map (fun x -> pp_offset x) offsets))^" ]"
         | TOP_Offsets -> pp_base vs.base_vs ^ " TOP";;
 
     let pp_valuesset vs =
         match vs with
         | TOP -> "TOP"
-        | Values v -> List.fold_left (fun x y -> x^y^" | " ) " | " (List.map pp_valueset v);;
+        | Values v -> " | " ^(String.concat " | " (List.map (fun x -> pp_valueset x) v))
 
     let pp_absenv name values =
         pp_name name ^" : "^(pp_valuesset values) 

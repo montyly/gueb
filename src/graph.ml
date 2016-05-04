@@ -112,7 +112,7 @@ struct
     
 (*    let saved_values = ref [] *)
   
-    (* bb_ori, bb_dst, ori_n, dst_n *) 
+    (* (bb_ori,bb_it), bb_dst, ori_n, dst_n *) 
     let saved_call = ref [] 
     
     let call_stack = Stack.create () 
@@ -1391,18 +1391,23 @@ struct
         | SITE_USE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
         | SITE_DF -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d DF²\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (addr/0x100) it f (addr/0x100) it
 
-    let print_bbt_dot oc (bb,t) f n id_node=
+    let print_bbt_dot oc (bb,t) func_name n id_node=
         let addr = bb.addr_bb/0x100 in
-        let id_node_txt = Printf.sprintf "%d%d" n addr in
-        let () = Hashtbl.add id_node (n,addr) id_node_txt in
+        let id_node_txt =
+            try Hashtbl.find id_node (n,(addr)) 
+            with Not_found ->        
+                let id_node_txt = Printf.sprintf "%d%d" n (addr) in
+                let () = Hashtbl.add id_node (n,addr/0x100) id_node_txt in
+                id_node_txt
+        in
         let print_event oc id_node_txt f addr t color = Printf.fprintf oc "%s[label=\"%s -> 0x%x %s\", type=\"%s\", style=filled,shape=\"box\", fillcolor=\"%s\"]\n" id_node_txt f addr f t color in
         let print oc id_node_txt addr t color = Printf.fprintf oc "%s[label=\"0x%x\", type=\"%s\", style=filled, fillcolor=\"%s\"]\n" id_node_txt addr t color in
         match t with
         | NODE_OUT -> Printf.fprintf oc "%s[label=\"0x%x \", type=\"normal\"]\n"  id_node_txt (addr)
-        | NODE_ALLOC -> print_event oc id_node_txt f addr "alloc" "blue" 
-        | NODE_FREE -> print_event oc id_node_txt f addr "free" "green" 
-        | NODE_USE -> print_event oc id_node_txt f addr "use" "red" 
-        | NODE_DF -> print_event oc id_node_txt f addr "df" "red" 
+        | NODE_ALLOC -> print_event oc id_node_txt func_name addr "alloc" "blue" 
+        | NODE_FREE -> print_event oc id_node_txt func_name addr "free" "green" 
+        | NODE_USE -> print_event oc id_node_txt func_name addr "use" "red" 
+        | NODE_DF -> print_event oc id_node_txt func_name addr "df" "red" 
         | NODE_EIP -> print oc id_node_txt addr "eip" "orange" 
         | NODE_EIP_ALLOC -> print oc id_node_txt addr "eipalloc" "pink" 
         | NODE_ALLOC_FREE -> print oc id_node_txt addr "allocfree" "aquamarine"
@@ -1421,8 +1426,13 @@ struct
         let addr = bb.addr_bb/0x100 in
         let last_addr = (List.nth bb.nodes ((List.length bb.nodes)-1)).addr/0x100 in
         let print_nodes n = String.concat "," (List.map (fun x -> Printf.sprintf "%x" (x.addr/0x100))n) in
-        let id_node_val = (Hashtbl.length id_node)  in
-        let () = Hashtbl.add id_node (n,addr) id_node_val in
+        let id_node_val = 
+            try Hashtbl.find id_node (n,addr) 
+            with Not_found ->
+                let id_node_val = (Hashtbl.length id_node)  in
+                let () = Hashtbl.add id_node (n,addr) id_node_val in
+                id_node_val 
+        in
         let print oc n id_node_val nodes addr t = Printf.fprintf oc "node [ \n id %d \n addr %d \n call %d \n addrlast %d \n nodes \"%s\" \n label \"0x%x\" \n type \"%s\" \n callsite \"%s\"\n]\n" id_node_val addr n last_addr nodes addr t (export_callsite n) in
         match t with
         | NODE_OUT -> print oc n id_node_val "" addr "normal"
@@ -1441,15 +1451,39 @@ struct
         ) leafs  
 
     let print_bbt_arc_dot oc (ori_addr,ori_n,dst_addr,dst_n) id_node =
-        let id_src = Hashtbl.find id_node (ori_n,(ori_addr/0x100)) in
-        let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
+        let id_src = 
+            try Hashtbl.find id_node (ori_n,(ori_addr/0x100)) 
+            with Not_found ->        
+                let id_node_txt = Printf.sprintf "%d%d" ori_n (ori_addr/0x100) in
+                let () = Hashtbl.add id_node (ori_n,ori_addr/0x100) id_node_txt in
+                id_node_txt
+        in
+        let id_dst = 
+            try Hashtbl.find id_node (dst_n,(dst_addr/0x100)) 
+            with Not_found ->        
+                let id_node_txt = Printf.sprintf "%d%d" dst_n (dst_addr/0x100) in
+                let () = Hashtbl.add id_node (dst_n,dst_addr/0x100) id_node_txt in
+                id_node_txt
+        in
         Printf.fprintf oc "%s -> %s\n" id_src id_dst
 
     let already_seen = Hashtbl.create 4000
 
     let print_bbt_arc_gml oc (ori_addr,ori_n,dst_addr,dst_n) id_node =
-        let id_src = Hashtbl.find id_node (ori_n,(ori_addr/0x100)) in
-        let id_dst = Hashtbl.find id_node (dst_n,(dst_addr/0x100)) in
+        let id_src = 
+            try Hashtbl.find id_node (ori_n,(ori_addr/0x100)) 
+            with Not_found ->
+                let id_node_val = (Hashtbl.length id_node)  in
+                let () = Hashtbl.add id_node (ori_n,ori_addr/0x100) id_node_val in
+                id_node_val 
+        in        
+        let id_dst =
+            try Hashtbl.find id_node (dst_n,(dst_addr/0x100)) 
+            with Not_found ->
+                let id_node_val = (Hashtbl.length id_node)  in
+                let () = Hashtbl.add id_node (dst_n,dst_addr/0x100) id_node_val in
+                id_node_val 
+        in
         try let _ = Hashtbl.find already_seen (id_src,id_dst)  in () 
         with        
             Not_found ->
@@ -1470,7 +1504,7 @@ struct
  
     let print_group_dot oc bbst n =
         let () = Printf.fprintf oc "Subgraph cluster_%d\n {" n in
-        let () = List.iter (fun (bb,_) -> Printf.fprintf oc "%d%d\n" n (bb.addr_bb/0x100)) bbst in
+        let () = List.iter (fun (bb) -> Printf.fprintf oc "%d%d\n" n (bb.addr_bb/0x100)) bbst in
         Printf.fprintf oc "}\n"
 
     let print_group_gml _oc _bbst _n = ()
@@ -1629,6 +1663,7 @@ struct
         with
             Not_found -> let () = Printf.printf "Not found ori bb %x %s\n" addr f in (0,0)
 
+(*
     let export_flow_graph_uaf filename print_begin print_end print_node print_arc print_group alloc free use eip calls funcs ret flow_graph_disjoint =
         let oc = open_out filename in 
         (* id_node use as index for exporting, and keeping relations between print node and arcs, addr * n -> id *)
@@ -1668,6 +1703,85 @@ struct
             let () = print_end oc  in
             close_out oc  
     with _ -> failwith ("Error during export")
+*)
+
+    let get_type_node bb call_id l_event =
+        let t =
+            try
+                let m = List.find_all (fun (((n,_),_,c_id),_) -> 
+                    if(call_id = c_id) then List.exists (fun x -> x.addr = n) bb.nodes
+                    else false
+                ) l_event in
+                (* in case of multipe types *)
+                if (List.exists (fun (_,t) -> t = SITE_DF) m) then SITE_DF 
+                else if (List.exists (fun (_,t) -> t = SITE_USE) m) then SITE_USE
+                else if (List.exists (fun (_,t) -> t = SITE_FREE) m) then SITE_FREE
+                else if (List.exists (fun (_,t) -> t = SITE_ALLOC) m) then SITE_ALLOC
+                else SITE_NORMAL        
+            with Not_found -> SITE_NORMAL
+        in site_to_subgraph_type t
+       
+    (* calls : (bb_ori,bb_it) , bb_dst , ori_n, dst_n *)
+    let get_call bb call_id calls =
+        try
+            Some (List.find (fun ((bb_ori,_),_,ori_n,_) -> ori_n = call_id && bb_ori = bb.addr_bb) calls)
+        with
+            Not_found -> None
+ 
+    (* ret : (bb_ori,bb_it) ,ori_n , (bb_dst,bb_it) , dst_n *)
+    let get_ret bb call_id rets =
+        try
+            Some (List.find (fun ((bb_ori,_),ori_n,_,_) -> ori_n = call_id && bb_ori = bb.addr_bb) rets)
+        with
+            Not_found -> None      
+ 
+    let get_func eip funcs =
+        try 
+            find_func_eip_no_unloop eip funcs
+        with
+            Not_found -> failwith (Printf.sprintf "Get func not found %x\n" eip)
+    
+    let export_flow_graph_uaf filename print_begin print_end print_node print_arc print_group alloc free use eip calls funcs rets _flow_graph_disjoint =
+        let oc = open_out filename in 
+        let () = Printf.printf "Export %s\n" filename in
+        let bb_saw = Hashtbl.create 40000 in
+        let id_node = Hashtbl.create 40000 in
+        let l_event = List.concat (alloc::(free@use)) in
+        let () = print_begin oc in
+(*        let max_call_id = ref 0 in*)
+        let rec explore_bb bb call_id func_name =
+            if (Hashtbl.mem bb_saw (bb.addr_bb,call_id)) then ()
+            else
+                let () = Hashtbl.add bb_saw (bb.addr_bb,call_id) true in
+                let t = get_type_node bb call_id l_event in
+                let () = print_node oc (bb,t) func_name call_id id_node in
+                let () = 
+                    let ret = get_ret bb call_id rets in
+                    match ret with
+                    | Some (_,_,(ret_addr,_),ret_id) -> List.iter (fun x -> print_arc oc (ret_addr, ret_id ,x.addr_bb, call_id) id_node) bb.sons
+                    | None -> ()
+                in
+                let () = 
+                    List.iter (fun x -> 
+                    let call = get_call bb call_id calls in
+                    match call with         
+                    | None ->
+                        begin 
+                        try print_arc oc (bb.addr_bb,call_id,x.addr_bb,call_id) id_node
+                        with Not_found -> failwith "Error "
+                        end
+                    | Some (_,dst_eip,_,func_called_id) -> let () = print_arc oc (bb.addr_bb, call_id, dst_eip,func_called_id) id_node in
+                                                           let (func_called_eip,bbs,func_called_name) = get_func (dst_eip/0x100) funcs in
+                                                           let () = print_group oc bbs func_called_id in
+                                                           explore_bb func_called_eip func_called_id func_called_name
+                ) bb.sons in
+                List.iter (fun x -> explore_bb x call_id func_name) bb.sons
+        in
+        let eip,bbs,name = get_func eip funcs in
+        let () = print_group oc bbs 0 in
+        let () = explore_bb eip 0 name in
+        let () = print_end oc  in
+        close_out oc 
 
     let export_flow_graph filename print_begin print_end print_node print_arc print_group  eip calls funcs ret flow_graph_disjoint =
         let oc = open_out filename in 
@@ -1689,7 +1803,7 @@ struct
 
             (* For exporting, we compare bb with addr /0x100, because of REIL *) 
             let compare_bb (bb1,_) (bb2,_) = compare (bb1.addr_bb/0x100) (bb2.addr_bb/0x100) in
-            let () = List.iter (fun (_,bbst,_,n) -> print_group oc bbst n) list_func in
+            let () = List.iter (fun (_,bbst,_,n) -> print_group oc (List.map (fun (a,_) -> a ) bbst) n) list_func in
             let () = List.iter (fun (_eip,bbst,name,n) -> List.iter (fun x ->  print_node oc x name n id_node ) (List.sort_uniq compare_bb bbst) ) list_func in
             let () = List.iter (fun x -> print_arc oc x id_node) list_arcs in
             let () = print_end oc  in

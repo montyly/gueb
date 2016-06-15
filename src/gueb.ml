@@ -84,10 +84,12 @@ let launch_stub stub p f =
     let module M_Optipng = GuebAnalysis(AbsEnv)(REIL)(StubOptiPNG)  in
     let module M_Jasper = GuebAnalysis(AbsEnv)(REIL)(StubJasper)  in
     let module M_Gnome_nettool = GuebAnalysis(AbsEnv)(REIL)(StubGnomeNettool)  in
+    let module M_Tiff2pfd = GuebAnalysis(AbsEnv)(REIL)(StubTiff2pdfLibtiff)  in
     match (stub) with
         | "optipng" -> M_Optipng.launch_analysis p f  
         | "jasper" -> M_Jasper.launch_analysis p f  
         | "gnome-nettool" -> M_Gnome_nettool.launch_analysis p f  
+        | "tiff2pdf" -> M_Tiff2pfd.launch_analysis p f  
         | _ -> M0.launch_analysis p f 
 
 let read_lines_file filename = 

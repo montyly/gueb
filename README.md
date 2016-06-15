@@ -153,7 +153,7 @@ Some user reported trouble to build piqilib. During piqi installation, piqilib c
 ----------
 
 * Jasper-JPEG-200 (CVE-2015-5221)
-* openjpeg (https://github.com/uclouvain/openjpeg/issues/563)
+* openjpeg (CVE-2015-8871)
 * gnome-netool : https://bugzilla.gnome.org/show_bug.cgi?id=753184 
 * bind (https://fossies.org/diffs/bind/9.10.2-P4_vs_9.10.3/CHANGES-diff.html ( 4179.  [bug]  Fix double frees in getaddrinfo() in libirs.     [RT #40209] )
 * accel-ppp (http://accel-ppp.org/forum/viewtopic.php?f=18&t=581)

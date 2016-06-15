@@ -1104,7 +1104,7 @@ struct
                 ) chunks 
         in
         let free_elems_cleans = clean_he_for_free v in
-        List.find_all (fun x -> chunk_in x free_elems_cleans ) hf
+        List.filter (fun x -> chunk_in x free_elems_cleans ) hf
         end
 
     (*

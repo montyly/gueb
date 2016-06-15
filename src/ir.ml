@@ -18,6 +18,7 @@ sig
     val parse_number_unloop : string -> int
     val parse_func_protobuf :  Program_piqi.function_-> (int*(int list)) list * (int * int) list * int * int  * (ir_stmt*int*int) list * (int list * int list)
     val parse_func_protobuf_number_unloop :  Program_piqi.function_-> int                    (* bbs,connection_unfilter,eip, number_unloop,nodes,call_retn)  *)
+    val get_real_addr : int -> int
 
     val get_value_jump : ir_stmt -> Absenv_v.absenv -> int option
     val get_first_arg: ir_stmt -> int option
@@ -713,7 +714,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
         | Sub|And|Xor|Str|Bsh|Jcc|Ldm|Add|Nop|Mul|Mod|Div|Or|Bisz|Undef|Unknow -> false;;
     
 
-
+    let get_real_addr x = x/0x100
          
 
 end

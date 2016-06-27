@@ -1936,14 +1936,11 @@ struct
                 let t = 
                         try
                                 let t_forward = Hashtbl.find type_tbl_forward (bb.addr_bb,call_id) in
-                                let () = Printf.printf "Type %s" (pp_subgraph_type t_forward) in
                                 let t_backward = Hashtbl.find type_tbl_backward (bb.addr_bb,call_id) in
-                                let () = Printf.printf " %s ->"(pp_subgraph_type t_backward) in
                                 merge_type t_forward t_backward
                          with
                                 Not_found -> NODE_OUT
                 in               
-                let () = Printf.printf " %s \n" (pp_subgraph_type t) in
                 let () = print_node oc (bb,t) func_name call_id id_node in
                 let () = if(not flow_graph_disjoint) then export_ret_joint bb call_id id_node rets oc print_arc in
                 let () = export_call bb call_id id_node calls oc print_arc print_group call_stack funcs explore_bb flow_graph_disjoint in

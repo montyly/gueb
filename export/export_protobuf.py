@@ -1,6 +1,6 @@
 ##### global definition 
 path_binnavi    = "PATH_TO_BINNAVI"
-path_dependency = "PATH_TO_GUEB+"/dependency/"
+path_dependency = "PATH_TO_GUEB"+"/dependency/"
 
 binnavi_host        = 'localhost'
 binnavi_db_name     = 'GUEB-bin6-ida68'

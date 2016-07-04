@@ -1,6 +1,7 @@
 open Absenvgenerique
 open Program_piqi
 
+
 module type IR = functor (Absenv_v : AbsEnvGenerique) ->
 sig 
     type ir_stmt
@@ -20,12 +21,10 @@ sig
 
     val get_value_jump : ir_stmt -> Absenv_v.absenv -> int option
     val get_first_arg: ir_stmt -> int option
-    val function_transfer : ir_stmt -> Absenv_v.absenv -> (int*int) -> string -> int -> ((int*int)*string*int) list -> Absenv_v.absenv
+    val function_transfer : ir_stmt -> Absenv_v.absenv ->  (int*int) -> string -> int -> ((int*int)*string*int) list -> Absenv_v.absenv
     val access_heap : ir_stmt -> Absenv_v.absenv -> Absenv_v.he list
     val check_uaf : (ir_stmt*Absenv_v.absenv*Absenv_v.he list*(int*int)) -> (ir_stmt*Absenv_v.he list *(int*int)) option 
     val score_heap_use : (ir_stmt*Absenv_v.absenv) -> bool  (*TODO use with hashmap *)
     
 end ;;
-
-
 

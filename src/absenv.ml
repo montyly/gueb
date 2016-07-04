@@ -1,81 +1,3 @@
-(* Signature *)
-module type AbsEnvGenerique =
-sig
-    type he
-    type absenv
-    type valuesSet
-    type nameVal
-    type chunk_t
-
-
-    val initAbsenEnv : unit -> absenv
-    val init_first : absenv
-    val init_malloc : int -> ((int*int)*string*int) list -> absenv
-    val init_vs_chunk : int -> chunk_t -> ((int*int)*string*int) list -> valuesSet
-    val init_chunk : int -> chunk_t -> ((int*int)*string*int) list -> he
-    val new_init_memory : int ref-> ((int*int)*string*int) list ->  valuesSet    
-
-    val classical_chunk : unit -> chunk_t
-
-    val create_cst : int -> valuesSet
-    val merge_he : he list -> he list -> he list
-    val merge_alloc_free_conservatif : he list -> he list -> he list
-    val merge_values_two : valuesSet -> valuesSet -> valuesSet
-    val merge : absenv-> absenv-> absenv
-    val update : absenv-> absenv-> absenv(* init -> input ->   *)
-
-    val get_integer_values : valuesSet -> int option list
-    val get_value : absenv -> nameVal -> valuesSet
-    val get_value_create: absenv -> nameVal -> int ref -> ((int*int)*string*int) list -> absenv * valuesSet
-    val set_value : absenv -> nameVal-> valuesSet -> absenv
-   
-    val get_chunk_key : he -> int* chunk_t
-    val get_chunk_states : he -> ((int*int)*string*int) list * (((int*int)*string*int) list) list
- 
-    val get_value_string : absenv -> string -> valuesSet
-    val get_value_string_create : absenv -> string -> int ref -> ((int*int)*string*int) list -> absenv *valuesSet
-    val set_value_string : absenv -> string -> valuesSet -> absenv
-
-    val string_to_name : string -> nameVal
-    val values_to_names : valuesSet -> nameVal list
-
-    val add : valuesSet -> valuesSet -> valuesSet
-    val sub : valuesSet -> valuesSet -> valuesSet
-    val mul : valuesSet -> valuesSet -> valuesSet
-    val div : valuesSet -> valuesSet -> valuesSet
-    val and_op : valuesSet -> valuesSet -> valuesSet
-    val or_op : valuesSet -> valuesSet -> valuesSet
-    val xor_op : valuesSet -> valuesSet -> valuesSet
-    val modulo : valuesSet -> valuesSet -> valuesSet
-    val bsh : valuesSet -> valuesSet -> valuesSet
-    val is_zero : valuesSet -> valuesSet
-
-    val pp_name : nameVal -> string
-    val pp_valuesset : valuesSet -> string
-    val pp_absenvs : absenv -> string
-    val pp_he : he list -> string
-    val pp_chunk : he -> string
-    val pp_chunk_t : chunk_t -> string
-    val pp_state :  ((int*int)*string*int) list -> string
- 
-    val check_df : he list -> valuesSet -> he list
-    val free: he list-> he list-> valuesSet -> ((int*int)*string*int) list -> bool -> (he list)*(he list)
-    val filter_values : valuesSet list-> valuesSet 
-    val filter_esp_ebp : absenv-> bool -> absenv
-
-    val restore_stack_frame : absenv -> absenv -> absenv
-    
-    val names_to_he : nameVal list -> he list
-    val check_uaf : nameVal list -> he list -> he list
-    val check_use_heap : nameVal list -> bool
-    val retn_not_analyse : unit -> valuesSet
-
-    val top_value : unit -> valuesSet
-
-    val clean_vsa : absenv -> unit 
-
-    val restore_esp : absenv -> absenv
-end;;
 
 (* 
  *  Default abstract environment 
@@ -83,10 +5,6 @@ end;;
  *)
 module AbsEnv =
 struct
-
-    exception TOP_VAL;;
-    exception TOP_OFFSETS;;
-    exception ERROR;;
 
     (* 
      * Absenv definition 
@@ -232,9 +150,13 @@ struct
             stack : (valuesSet) HashStack.t ; (* register_init_name * offset -> valuesset *)
             constant : (valuesSet) HashConstant.t; (* offset -> valuesset *)
             register : (valuesSet) HashRegister.t; (* register_name -> valuesSet*)
+            mutable ha : he list;
+            mutable hf : he list;
         };;
 
     let classical_chunk () = NORMAL
+
+    let number_chunk = ref 0
 
     (* number max of value *)
     let max_KSET=10;;
@@ -267,6 +189,7 @@ struct
         | TOP -> []
         | Values v -> values_to_names_rec v [];;
              
+    let get_hf abs = abs.hf
 
     (* 
      * Comparaison functions
@@ -378,7 +301,8 @@ struct
         let txt = HashRegister.fold (fun reg values txt -> txt ^"\t"^(pp_register reg )^" : "^(pp_valuesset values)^"\n" ) register "Register\n" in
         let txt = HashStack.fold (fun (reg,off) values txt -> txt ^"\t"^(pp_register reg) ^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) stack (Printf.sprintf "%sStack\n" txt) in
         let txt = HashHeap.fold (fun (_,off,_) (chunk,values) txt -> txt ^"\t"^(pp_chunk chunk)^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) heap (Printf.sprintf "%sHeap\n" txt) in
-        HashConstant.fold (fun off values txt -> txt ^"\t"^(pp_cst)^" "^( pp_offset off )^" : "^(pp_valuesset values)^"\n" ) constant (Printf.sprintf "%sConstant\n" txt) 
+        let txt = HashConstant.fold (fun off values txt -> txt ^"\t"^(pp_cst)^" "^( pp_offset off )^" : "^(pp_valuesset values)^"\n" ) constant (Printf.sprintf "%sConstant\n" txt) in
+        txt ^ (Printf.sprintf "Ha : %s \nHf : %s\n\n" (pp_he abs.ha) (pp_he abs.hf)        )
 
     let copy_vals v=
         let rec copy_vals_rec v l= 
@@ -393,7 +317,7 @@ struct
         | Values v -> Values (copy_vals v);;
 
     (* other if you want to have one ESP per function*)
-    let initAbsenEnv () = {stack = HashStack.create 50; heap = HashHeap.create 50; register = HashRegister.create 50; constant = HashConstant.create 50};;
+    let initAbsenEnv () = {stack = HashStack.create 50; heap = HashHeap.create 50; register = HashRegister.create 50; constant = HashConstant.create 50; ha = []; hf = []};;
 
     let get_he abs id offset t =
         let tbl = abs.heap in
@@ -470,9 +394,20 @@ struct
         let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
         abs
 
+    let malloc_ret abs state =
+        let chunk = ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) in
+        let vals = Values ([{base_vs=Constant;offsets=Offsets [0]}]) in
+        let () = set_he abs (!number_chunk) 0 NORMAL chunk vals in
+        let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
+        let () = number_chunk := !number_chunk +1 in
+        let () = abs.ha <- chunk::abs.ha in
+        abs    
+
+
+
     let append_offsets o1 o2 =
         match (o1,o2) with
-        | TOP_Offsets,_ | _,TOP_Offsets -> raise TOP_OFFSETS
+        | TOP_Offsets,_ | _,TOP_Offsets -> raise Absenvgenerique.TOP_OFFSETS
         | Offsets o1,Offsets o2 -> Offsets (List.sort_uniq (fun a b -> compare a b)  (o1@o2))
 
     let merge_offsets o =
@@ -483,7 +418,7 @@ struct
         in
         try   merge_offsets_rec o (Offsets [])
         with
-            TOP_OFFSETS->TOP_Offsets;;
+            Absenvgenerique.TOP_OFFSETS->TOP_Offsets;;
 
    
     let merge_he h1 h2 =
@@ -506,7 +441,7 @@ struct
             | [] -> 
             (
                 match l with
-                | None -> raise TOP_VAL
+                | None -> raise Absenvgenerique.TOP_VAL
                 | Some v -> Values v                   
             )
             | hd::tl ->
@@ -524,7 +459,7 @@ struct
             (
                 try  merge_values_rec v None
                 with 
-                TOP_VAL -> TOP
+                Absenvgenerique.TOP_VAL -> TOP
             )
 
 (*    let merge_values_two v1 v2=
@@ -576,7 +511,9 @@ struct
         let () = add_all register only_register_a only_register_b both_register (HashRegister.add) in
         let () = add_all constant only_constant_a only_constant_b both_constant (HashConstant.add) in
         let () = add_he heap only_heap_a only_heap_b both_heap (HashHeap.add) in
-        {stack = stack; heap = heap ; constant = constant; register= register}
+        let ha = merge_he a.ha b.ha in
+        let hf = merge_he a.hf b.hf in
+        {stack = stack; heap = heap ; constant = constant; register = register; ha = ha ; hf = hf}
        
     (* merge a and b, if intersection, keeps a *) 
     (* should may be use first class module here ? *)
@@ -611,7 +548,9 @@ struct
         let () = add_all heap vals_heap_a only_heap_b (HashHeap.add) in
         let () = add_all register vals_register_a only_register_b (HashRegister.add) in
         let () = add_all constant vals_constant_a only_constant_b (HashConstant.add)  in
-        {stack = stack; heap = heap ; constant = constant; register= register}
+        let ha = merge_he a.ha b.ha in
+        let hf = merge_he a.hf b.hf in
+        {stack = stack; heap = heap ; constant = constant; register = register; ha = ha ; hf = hf}
 
  (*   let get_tbl abs name = 
         match name with
@@ -670,7 +609,7 @@ struct
              Not_found ->  Values ([]);;
 
     (* same as get_value, but create values if not found *)
-    let get_value_create abs name n state=
+    let get_value_create abs name state=
         try
             let vals = get_value_unsafe abs name in 
             match vals with
@@ -678,8 +617,8 @@ struct
             | TOP -> abs,TOP (* TODO should be change, and TOP check in values_to_names *)
             with
                 Not_found -> 
-                    let () = n := (!n)+1 in
-                    let new_val = Values ([{base_vs= HE(init_chunk (!n) INIT state); offsets=Offsets([0])}  ])  in
+                    let new_val = Values ([{base_vs= HE(init_chunk (!number_chunk) INIT state); offsets=Offsets([0])}  ])  in
+                    let () = number_chunk := (!number_chunk)+1 in
                     let abs = set_value abs name new_val in
                     (abs,new_val);;
 
@@ -692,12 +631,12 @@ struct
                 get_value absenvs name_convert;;
 
     (* same as get_value_string, but create values if not found *)
-    let get_value_string_create absenvs name n state=
+    let get_value_string_create absenvs name state=
         try (absenvs, Values ([{base_vs=Constant;offsets=Offsets [int_of_string name]}]))
         with    
             Failure "int_of_string" -> 
                 let name_convert = string_to_name name in
-                get_value_create absenvs name_convert n state;;
+                get_value_create absenvs name_convert state;;
 
     let set_value_string absenvs name values =
         let name_convert = string_to_name name in
@@ -1090,9 +1029,10 @@ struct
     (*
      * Checking for double-free
      *)
-    let check_df hf vals =
+    let check_df abs vals =
+        let hf = abs.hf in
         match vals with
-        | TOP -> raise ERROR
+        | TOP -> raise Absenvgenerique.ERROR
         | Values v ->
         begin
         let chunk_in chunk chunks=
@@ -1110,9 +1050,10 @@ struct
     (*
      * free elem
      * *)
-    let free ha hf vals state show_free=
+    let free abs vals state show_free =
+        let (ha,hf) = abs.ha,abs.hf in
         match vals with
-        | TOP -> raise ERROR
+        | TOP -> raise Absenvgenerique.ERROR
         | Values v -> 
             let () = if(show_free) then Printf.printf "Free on %s \n" (pp_valuesset (Values v)) in
             let chunk_not_in chunk chunks=
@@ -1124,8 +1065,9 @@ struct
                 ) chunks in
         let free_elems_cleans = clean_he_for_free v in
         let new_ha=List.filter (fun x->chunk_not_in x free_elems_cleans) ha in
-        let new_hf=(List.map (fun x -> match x with | Some a -> a.state_free<-state::a.state_free ; a | None -> raise ERROR)  free_elems_cleans)@hf 
-        in (new_ha,new_hf);;
+        let new_hf=(List.map (fun x -> match x with | Some a -> a.state_free<-state::a.state_free ; a | None -> raise Absenvgenerique.ERROR)  free_elems_cleans)@hf in
+        let () = abs.ha <- merge_alloc_free_conservatif new_ha new_hf in (* may be useless*)
+        abs.hf <- new_hf
 
     (* 
      * Filter values
@@ -1148,19 +1090,19 @@ struct
         let ()  = 
             match val_ebp with
             | TOP -> let () = if (verbose) then Printf.printf "Error Ebp = TOP\n" in
-                     raise ERROR
+                     raise Absenvgenerique.ERROR
             | Values _ -> ()
         in
         let val_esp=get_value_string abs "esp" in
         match val_esp with
-            | TOP -> let () = if (verbose) then Printf.printf("Error ! \n") in raise ERROR
+            | TOP -> let () = if (verbose) then Printf.printf("Error ! \n") in raise Absenvgenerique.ERROR
             | Values v -> 
-                if (List.length v) <>1 then let () = if (verbose) then Printf.printf("Error 2! \n") in raise ERROR
+                if (List.length v) <>1 then let () = if (verbose) then Printf.printf("Error 2! \n") in raise Absenvgenerique.ERROR
                 else 
                     match ((List.hd v).offsets) with
-                    | TOP_Offsets-> let () = if (verbose) then Printf.printf("Error3 ! \n") in  raise ERROR
+                    | TOP_Offsets-> let () = if (verbose) then Printf.printf("Error3 ! \n") in  raise Absenvgenerique.ERROR
                     | Offsets o -> 
-                        if ((List.length o) <> 1) then let () = if (verbose) then Printf.printf("Error4 ! \n") in raise ERROR
+                        if ((List.length o) <> 1) then let () = if (verbose) then Printf.printf("Error4 ! \n") in raise Absenvgenerique.ERROR
                         else
                             let offset=List.hd (o) in
 (*                            List.filter *)
@@ -1176,7 +1118,8 @@ struct
                                 ) stack [] 
                             in 
                             let () = List.iter (fun x -> HashStack.remove stack x ) out_of_scope in
-                            {stack = stack; register = abs.register ; constant = abs.constant ; heap = abs.heap}
+                            let ha = merge_alloc_free_conservatif abs.ha abs.hf in
+                            {stack = stack; register = abs.register ; constant = abs.constant ; heap = abs.heap; ha = ha ; hf = abs.hf}
 
     (* 
      * Restore in v1 stack frame values from v2
@@ -1185,6 +1128,11 @@ struct
         let v1_esp = set_value_string v1 "esp" (get_value_string v2 "esp") in
         let v1_ebp = set_value_string v1_esp "ebp" (get_value_string v2 "ebp") in
         v1_ebp;;
+
+
+    let filter_he abs =
+            let ha = merge_alloc_free_conservatif abs.ha abs.hf in
+            {abs with ha = ha}
 
     let names_to_he names =
         let rec filter n l = 

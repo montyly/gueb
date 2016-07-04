@@ -1,11 +1,10 @@
-open Absenv
+open Absenvgenerique
 open Stubfunc
 open Ir
 open Graph
 open Program_piqi
 open Program
 open Heap_functions
-
 
 (* global vars *)
 let verbose = ref false
@@ -44,7 +43,7 @@ struct
     let launch_analysis program_file func_name  = 
         let channel =
             try open_in_bin program_file 
-            with _ -> let () = Printf.printf "REIL file not found (have you used -reil ? )\n" in exit 0
+            with _ -> let () = Printf.printf "Reil.REIL file not found (have you used -reil ? )\n" in exit 0
         in
         let buf = Piqirun.init_from_channel channel in
         let raw_program = parse_program buf in
@@ -80,11 +79,11 @@ end ;;
 
 let launch_stub stub p f =
     let () = Printf.printf "Launch the analysis on %s\n" f in
-    let module M0 = GuebAnalysis(AbsEnv)(REIL)(StubNoFunc)  in
-    let module M_Optipng = GuebAnalysis(AbsEnv)(REIL)(StubOptiPNG)  in
-    let module M_Jasper = GuebAnalysis(AbsEnv)(REIL)(StubJasper)  in
-    let module M_Gnome_nettool = GuebAnalysis(AbsEnv)(REIL)(StubGnomeNettool)  in
-    let module M_Tiff2pfd = GuebAnalysis(AbsEnv)(REIL)(StubTiff2pdfLibtiff)  in
+    let module M0 = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)  in
+    let module M_Optipng = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubOptiPNG)  in
+    let module M_Jasper = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubJasper)  in
+    let module M_Gnome_nettool = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubGnomeNettool)  in
+    let module M_Tiff2pfd = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubTiff2pdfLibtiff)  in
     match (stub) with
         | "optipng" -> M_Optipng.launch_analysis p f  
         | "jasper" -> M_Jasper.launch_analysis p f  
@@ -115,7 +114,7 @@ let () =
         ("-flow-graph-dot", Arg.Set flow_graph_dot, "Export flow graph (Dot)");
         ("-flow-graph-gml", Arg.Set flow_graph_gml, "Export flow graph (Gml)"); 
         ("-flow-graph-call-disjoint", Arg.Set flow_graph_disjoint, "Export as separate functions");
-        ("-reil", Arg.String (fun x -> program:=x), "Name of the REIL file (protobuf), default : reil");
+        ("-reil", Arg.String (fun x -> program:=x), "Name of the Reil.REIL file (protobuf), default : reil");
         ("-func", Arg.String (fun x ->  func:=x), "Name of the entry point function, default : main");
         ("-funcs-file", Arg.String (fun x ->  funcs_file:=x), "Name of the files containing all the functions name");
         ("-stub", Arg.String (fun x -> stub_name:=x), "Name of the stub module");
@@ -128,14 +127,14 @@ let () =
         | 0 ->
             launch_stub (!stub_name) (!program) (!func) 
         | 1 -> 
-            let module SGanalysis = SuperGraphAnalysis(AbsEnv)(REIL)(StubNoFunc) in
+            let module SGanalysis = SuperGraphAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc) in
             SGanalysis.launch_analysis (!program) (!func) 
         | 2 ->
             let funcs=read_lines_file (!funcs_file) in
             List.iter (fun x -> launch_stub (!stub_name) (!program) x ) funcs 
         | 3 ->
             let funcs=read_lines_file (!funcs_file) in
-            let module SGanalysis = SuperGraphAnalysis(AbsEnv)(REIL)(StubNoFunc) in
+            let module SGanalysis = SuperGraphAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc) in
             List.iter (fun x -> SGanalysis.launch_analysis (!program) x ) funcs 
         | _ -> 
             Printf.printf "Bad analysis type\n"

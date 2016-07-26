@@ -15,7 +15,6 @@ sig
 
     val initAbsenEnv : unit -> absenv
     val init_first : absenv
-    val malloc_ret : absenv -> ((int*int)*string*int) list -> absenv
     val init_vs_chunk : int -> chunk_t -> ((int*int)*string*int) list -> valuesSet
     val init_chunk : int -> chunk_t -> ((int*int)*string*int) list -> he
     val new_init_memory : int ref-> ((int*int)*string*int) list ->  valuesSet    
@@ -81,5 +80,7 @@ sig
     val clean_vsa : absenv -> unit 
 
     val restore_esp : absenv -> absenv
+    val malloc_ret : absenv -> ((int*int)*string*int) list -> absenv
+    val malloc_arg : absenv -> ((int*int)*string*int) list -> int -> absenv
 end;;
 

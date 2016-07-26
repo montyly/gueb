@@ -10,7 +10,6 @@ module type AbsEnvGenerique =
     type chunk_t
     val initAbsenEnv : unit -> absenv
     val init_first : absenv
-    val malloc_ret : absenv -> ((int*int)*string*int) list -> absenv
     val init_vs_chunk :
       int -> chunk_t -> ((int * int) * string * int) list -> valuesSet
     val init_chunk :
@@ -78,4 +77,6 @@ module type AbsEnvGenerique =
     val top_value : unit -> valuesSet
     val clean_vsa : absenv -> unit
     val restore_esp : absenv -> absenv
+    val malloc_ret : absenv -> ((int*int)*string*int) list -> absenv
+    val malloc_arg : absenv -> ((int*int)*string*int) list -> int -> absenv
   end

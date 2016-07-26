@@ -394,16 +394,6 @@ struct
         let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
         abs
 
-    let malloc_ret abs state =
-        let chunk = ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) in
-        let vals = Values ([{base_vs=Constant;offsets=Offsets [0]}]) in
-        let () = set_he abs (!number_chunk) 0 NORMAL chunk vals in
-        let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
-        let () = number_chunk := !number_chunk +1 in
-        let () = abs.ha <- chunk::abs.ha in
-        abs    
-
-
 
     let append_offsets o1 o2 =
         match (o1,o2) with
@@ -1205,4 +1195,24 @@ struct
         let val_esp_4 = add val_esp (create_cst 4) in
         set_value_string vsa "esp" val_esp_4
 
+    let malloc_ret abs state =
+        let chunk = ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) in
+        let vals = Values ([{base_vs=Constant;offsets=Offsets [0]}]) in
+        let () = set_he abs (!number_chunk) 0 NORMAL chunk vals in
+        let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
+        let () = number_chunk := !number_chunk +1 in
+        let () = abs.ha <- chunk::abs.ha in
+        abs    
+
+    let malloc_arg abs state off =
+        let chunk = ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) in
+        let vals = Values ([{base_vs=Constant;offsets=Offsets [0]}]) in
+        let () = set_he abs (!number_chunk) 0 NORMAL chunk vals in
+        let val_esp= get_value_string abs "esp" in  
+        let val_esp_add = add val_esp (create_cst off) in
+        let arg = List.hd (values_to_names val_esp_add) in
+        let abs = set_value abs arg (Values ([{base_vs=HE ({base_chunk=(!number_chunk);size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
+        let () = number_chunk := !number_chunk +1 in
+        let () = abs.ha <- chunk::abs.ha in
+        abs    
 end;;

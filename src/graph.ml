@@ -697,15 +697,15 @@ struct
                             else
                                 let (func_eip,func_bbs)=(func_eip_ori,func_bbs_ori) in
                                 let number_call_prev = (!current_call) in
+                                let () = number_call:=(!number_call+1) in
                                 let () = 
                                     if(flow_graph) 
                                     then 
-                                        let () = number_call:=(!number_call+1) in
                                         let () = saved_call := ((bb_ori.addr_bb,bb_ori.unloop),func_eip.addr_bb,(!current_call),(!number_call))::(!saved_call) in 
                                         let () = Stack.push (n.addr,bb_ori.unloop) call_stack in
-                                        let () = Hashtbl.add call_stack_tbl (!number_call) (stack_to_list call_stack) in
-                                        current_call := (!number_call)
+                                        Hashtbl.add call_stack_tbl (!number_call) (stack_to_list call_stack) 
                                 in
+                                let () = current_call := (!number_call) in
                                 let () = List.iter (fun x -> init_value x ) func_bbs in
                                 let () = (List.find (fun x -> x.addr==func_eip.addr_bb) func_eip.nodes).init<-n.vsa in
                                 try
@@ -714,10 +714,9 @@ struct
                                     let (vsa,score)=value_analysis (func_eip,func_bbs,func_name) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
-                                    let () = if(flow_graph) then 
-                                        let _ = Stack.pop call_stack in
-                                        current_call:=number_call_prev 
+                                    let () = if(flow_graph) then let _ = Stack.pop call_stack in () 
                                     in
+                                    let () = current_call:=number_call_prev in
                                     let () = score_childs:=(||) (!score_childs) score in
                                     try
                                         n.vsa<-Absenv_v.filter_esp_ebp vsa verbose 
@@ -735,10 +734,9 @@ struct
                                     | NOT_RET (vsa,score)  ->
                                         let () = Printf.printf "End call (NOT RET) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(flow_graph) then 
-                                                                let _ = Stack.pop call_stack in
-                                                                current_call:=number_call_prev 
+                                        let () = if(flow_graph) then let _ = Stack.pop call_stack in ()
                                         in
+                                        let () = current_call:=number_call_prev in
                                         let () = score_childs:=(||) (!score_childs) score in
                                         let () = if (verbose) then 
                                             let () = Printf.printf  "Func transfer node Not ret \n %s" (pp_nodes_value [n] bb_ori.unloop) in
@@ -751,10 +749,9 @@ struct
                                    | NOT_RET_NOT_LEAF ->
                                         let () = if (verbose) then Printf.printf "End call (NOT RET NOT LEAF) %x:%d %s | %s\n" n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                         let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in
-                                        let () = if(flow_graph) then 
-                                                                let _ = Stack.pop call_stack in
-                                                                current_call:=number_call_prev 
+                                        let () = if(flow_graph) then let _ = Stack.pop call_stack in ()
                                         in
+                                        let () = current_call:=number_call_prev in
                                         let () = n.vsa <- restore_stack_frame n.vsa vsa in
                                         n.vsa <- Absenv_v.restore_esp n.vsa 
                         with

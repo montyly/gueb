@@ -2,7 +2,7 @@ open Absenvgenerique
 open Uafgenerique
 open Uafastree
 
-module UafGroupByFree (Absenv_v : AbsEnvGenerique) =
+module UafGroupByAlloc (Absenv_v : AbsEnvGenerique) =
 struct
 
         type site_type = Uafgenerique.site_type
@@ -10,15 +10,15 @@ struct
     	(* site : (addr,it) * func_name * call_n *)
 	type site = Uafgenerique.site
 
-        type tree_node = Uafastree.tree_node
+        type tree_node = Uafastree.tree_node 
 
         (* Hashtbl that contains result 
         * form :
         *  (id,size)  *   free sites  * malloc site * use sites
         * key is chunk * free site, because from a same malloc, different free that lead to different uaf 
         * *)
-        let sg_uaf = ((Hashtbl.create 100) : (( (int*Absenv_v.chunk_t) * (((site*site_type) list) list)   , ((site*site_type) list) *   (((site*site_type) list) list) ) Hashtbl.t )) 
-        
+        let sg_uaf = ((Hashtbl.create 100) : (( (int*Absenv_v.chunk_t)  , ((site*site_type) list) * (((site*site_type) list) list) *  (((site*site_type) list) list) ) Hashtbl.t )) 
+
         let merge_tree = HashTree.create 100
 
         let is_uaf () = (Hashtbl.length sg_uaf) > 0
@@ -31,8 +31,6 @@ struct
                         List.iter (fun x -> Printf.printf "%s\n" x)  v ;
                 ) merge_tree;
                 Printf.printf "\n%d different root causes\n" (HashTree.length merge_tree)
-
-
 
         let add_uaf ?(t=SITE_USE) c state =
             let state = List.map (fun x -> add_type x t) state in
@@ -49,20 +47,21 @@ struct
             let c_alloc,c_free = Absenv_v.get_chunk_states c in
             let c_alloc = add_type c_alloc SITE_ALLOC in
             let c_free = List.map (fun x -> add_type x SITE_FREE) c_free in
-            let key = Absenv_v.get_chunk_key c,c_free in
+            let key = Absenv_v.get_chunk_key c in
             try
-                let alloc,use=Hashtbl.find sg_uaf key in
+                let alloc,free,use=Hashtbl.find sg_uaf key in
+                let free = filter_list free c_free in
                 let use = filter_list use state in
-                Hashtbl.replace sg_uaf key (alloc,use)
+                Hashtbl.replace sg_uaf key (alloc,free,use)
             with
-                Not_found -> Hashtbl.add sg_uaf key (c_alloc,state)
+                Not_found -> Hashtbl.add sg_uaf key (c_alloc,c_free,state)
 
         let get_sg_uaf_by_alloc () =
                 let sg_uaf_by_alloc = ((Hashtbl.create 100) : ((int*Absenv_v.chunk_t  ,  ( ((site*site_type) list *  (((site*site_type) list) list) * (((site*site_type) list) list)) ) list ) Hashtbl.t ))  in
                 (* first ordone result by alloc, not by free *)
                 let () =
                     Hashtbl.iter 
-                        (fun ((chunk_id,chunk_type),free) (alloc,use) ->
+                        (fun ((chunk_id,chunk_type)) (alloc,free,use) ->
                             let key = chunk_id,chunk_type in
                             try
                                 let elems=Hashtbl.find sg_uaf_by_alloc key in
@@ -76,6 +75,7 @@ struct
             let oc = open_out filename in 
             let () = print_begin oc in
             let () = Printf.printf "Export %s\n" filename in
+            let free = remove_df free use in
             let alloc = List.rev alloc in
             let free = List.map (fun x -> List.rev x) free in 
             let use = List.map (fun x -> List.rev x) use in 
@@ -94,5 +94,6 @@ struct
                 HashTree.replace merge_tree tree (filename::prev)
             with
                 Not_found ->  HashTree.add merge_tree tree [filename]
+            
 end
 

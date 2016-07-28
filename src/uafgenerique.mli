@@ -1,5 +1,13 @@
 type site_type = SITE_NORMAL | SITE_ALLOC | SITE_FREE | SITE_USE | SITE_DF
 type site = (int * int) * string * int
+val equal_site :
+  (('a * 'b) * 'c * 'd) * 'e -> (('a * 'b) * 'f * 'g) * 'e -> bool
+val add_type :
+  (('a * 'b) * 'c * 'd) list ->
+  site_type -> ((('a * 'b) * 'c * 'd) * site_type) list
+val remove_df :
+  (site * site_type) list list ->
+  (site * site_type) list list -> (site * site_type) list list
 module type UafGenerique =
   functor (Absenv_v : Absenvgenerique.AbsEnvGenerique) ->
     sig

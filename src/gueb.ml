@@ -25,7 +25,7 @@ let flow_graph_dot = ref false
 let flow_graph_gml = ref false
 let flow_graph_disjoint = ref false
 let max_depth = ref 400
-
+let group_by = ref "alloc"
 
 
 (* Signature *)
@@ -57,11 +57,11 @@ struct
         let free = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
         let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free)  ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
-        Printf.printf "--------------------------------\n";
-        GraphIR.end_analysis ()
+        Printf.printf "--------------------------------\n"
 
     let launch_analysis_list program_file funcs_name = 
-        List.iter (fun x -> launch_analysis program_file x) funcs_name 
+        List.iter (fun x -> launch_analysis program_file x) funcs_name ;
+        GraphIR.end_analysis ()
     end ;;
 
 (* Callgraph analysis *)
@@ -85,33 +85,23 @@ struct
         List.iter (fun x -> launch_analysis program_file x) funcs_name 
 end ;;
 
-let launch_stub stub p f _uaf =
-    let module Uaf = Uafgroupbyfree.UafGroupByFree in
-    let module M0 = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in
-    let module M_Optipng = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubOptiPNG)(Uaf) in
-    let module M_Jasper = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubJasper)(Uaf) in 
-    let module M_Gnome_nettool = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubGnomeNettool)(Uaf) in
-    let module M_Tiff2pfd = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubTiff2pdfLibtiff)(Uaf) in
-    match (stub) with
-        | "optipng" -> M_Optipng.launch_analysis p f  
-        | "jasper" -> M_Jasper.launch_analysis p f  
-        | "gnome-nettool" -> M_Gnome_nettool.launch_analysis p f  
-        | "tiff2pdf" -> M_Tiff2pfd.launch_analysis p f  
-        | _ -> M0.launch_analysis p f 
-
-let launch_stub_list stub p f _uaf =
-    let module Uaf = Uafgroupbyfree.UafGroupByFree in
-    let module M0 = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in
-    let module M_Optipng = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubOptiPNG)(Uaf) in
-    let module M_Jasper = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubJasper)(Uaf) in 
-    let module M_Gnome_nettool = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubGnomeNettool)(Uaf) in
-    let module M_Tiff2pfd = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubTiff2pdfLibtiff)(Uaf) in
-    match (stub) with
-        | "optipng" -> M_Optipng.launch_analysis_list p f  
-        | "jasper" -> M_Jasper.launch_analysis_list p f  
-        | "gnome-nettool" -> M_Gnome_nettool.launch_analysis_list p f  
-        | "tiff2pdf" -> M_Tiff2pfd.launch_analysis_list p f  
-        | _ -> M0.launch_analysis_list p f 
+let launch_stub stub p f uaf to_list =
+    let m_uaf = match uaf with
+        | "alloc" -> (module Uafgroupbyalloc.UafGroupByAlloc : Uafgenerique.UafGenerique)
+        | "free" -> (module Uafgroupbyfree.UafGroupByFree : Uafgenerique.UafGenerique)
+        | _ -> failwith "Unknow groupby model ? "
+    in let module Uaf = (val m_uaf : Uafgenerique.UafGenerique) in
+    let m_stub = match stub with
+        | "optipng" -> (module Stubfunc.StubOptiPNG : Stubfunc.Stubfunc)  
+        | "jasper" -> (module Stubfunc.StubJasper : Stubfunc.Stubfunc)
+        | "gnome-nettool" -> (module Stubfunc.StubGnomeNettool : Stubfunc.Stubfunc)  
+        | "tiff2pdf" -> (module Stubfunc.StubTiff2pdfLibtiff : Stubfunc.Stubfunc)  
+        | _ -> (module Stubfunc.StubNoFunc : Stubfunc.Stubfunc) 
+    in let module Stub = (val m_stub : Stubfunc.Stubfunc) in
+    let module Analysis = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(Stub)(Uaf) in
+    match to_list with
+    | false -> Analysis.launch_analysis p (List.hd f)
+    | true ->  Analysis.launch_analysis_list p f
 
 let read_lines_file filename = 
     let lines = ref [] in
@@ -142,19 +132,20 @@ let () =
         ("-stub", Arg.String (fun x -> stub_name:=x), "Name of the stub module");
         ("-type", Arg.Int (fun x -> type_analysis:=x), "\n\t0 : uaf detection (default)\n\t1 : compute callgraph size (NOT WORKING on BinNavi 6)\n\t2 : uaf detection on a set of functions\n\t3 : compute callgraph size on a set of functions");
         ("-depth", Arg.Int (fun x -> max_depth:=x), "Max number of funcs to analyze (type 1 and 3). Default 400");
-        ("-output_dir", Arg.String (fun x -> dir_output:=x), "Output directory, default /tmp");
+        ("-output-dir", Arg.String (fun x -> dir_output:=x), "Output directory, default /tmp");
+        ("-groupby", Arg.String (fun x -> group_by:=x), "Group UaF by:\n\talloc (default)\n\tfree");
     ] in
     let _ =  Arg.parse speclist print_endline "GUEB : Static analyzer\n"  in
-    let module Uaf = Uafgroupbyfree.UafGroupByFree in
+    let module Uaf = Uafgroupbyalloc.UafGroupByAlloc in (* not used in SGanalysis *)
     match(!type_analysis) with
         | 0 ->
-            launch_stub (!stub_name) (!program) (!func) "uaffree" 
+            launch_stub (!stub_name) (!program) [(!func)] (!group_by) false
         | 1 -> 
             let module SGanalysis = SuperGraphAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in
             SGanalysis.launch_analysis (!program) (!func) ;
         | 2 ->
             let funcs=read_lines_file (!funcs_file) in
-            launch_stub_list (!stub_name) (!program) funcs "uaffree" 
+            launch_stub (!stub_name) (!program) funcs (!group_by) true
         | 3 ->
             let funcs=read_lines_file (!funcs_file) in
             let module SGanalysis = SuperGraphAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in

@@ -812,7 +812,7 @@ struct
         | Uafgenerique.SITE_ALLOC -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d alloc\", type=\"alloc\" , style=filled,shape=\"box\", fillcolor=\"turquoise\"]\n" n (Ir_v.get_real_addr addr) it f (Ir_v.get_real_addr addr) it
         | Uafgenerique.SITE_FREE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d free\", type=\"free\", style=filled,shape=\"box\", fillcolor=\"green\"]\n" n (Ir_v.get_real_addr addr) it f (Ir_v.get_real_addr addr) it
         | Uafgenerique.SITE_USE -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d use\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (Ir_v.get_real_addr addr) it f (Ir_v.get_real_addr addr) it
-        | Uafgenerique.SITE_DF -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d DF\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"red\"]\n" n (Ir_v.get_real_addr addr) it f (Ir_v.get_real_addr addr) it
+        | Uafgenerique.SITE_DF -> Printf.fprintf oc "%d%d%d[label=\"%s -> 0x%x:%d DF\", type=\"use\", style=filled,shape=\"box\", fillcolor=\"purple3\"]\n" n (Ir_v.get_real_addr addr) it f (Ir_v.get_real_addr addr) it
 
     let already_seen_bb_dot = Hashtbl.create 4000
 
@@ -1263,6 +1263,6 @@ struct
             | NOT_RET (_vsa,_score) -> ()
             | NOT_RET_NOT_LEAF -> ()
 
-        let end_analysis () = ()
+        let end_analysis () = Uaf_v.end_analysis ()
 end;;
 

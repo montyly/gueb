@@ -26,6 +26,7 @@ let flow_graph_gml = ref false
 let flow_graph_disjoint = ref false
 let max_depth = ref 400
 let group_by = ref "alloc"
+let free_stack = ref true
 
 
 (* Signature *)
@@ -56,7 +57,7 @@ struct
         let malloc = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
         let free = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free in
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free dir (!verbose) (!show_values) (!show_call) (!show_free)  ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
+        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free (!free_stack)  dir (!verbose) (!show_values) (!show_call) (!show_free)  ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
         Printf.printf "--------------------------------\n"
 
     let launch_analysis_list program_file funcs_name = 
@@ -134,6 +135,7 @@ let () =
         ("-depth", Arg.Int (fun x -> max_depth:=x), "Max number of funcs to analyze (type 1 and 3). Default 400");
         ("-output-dir", Arg.String (fun x -> dir_output:=x), "Output directory, default /tmp");
         ("-groupby", Arg.String (fun x -> group_by:=x), "Group UaF by:\n\talloc (default)\n\tfree");
+        ("-no-free-stack", Arg.Set free_stack, "After a call, do not free stack values");
     ] in
     let _ =  Arg.parse speclist print_endline "GUEB : Static analyzer\n"  in
     let module Uaf = Uafgroupbyalloc.UafGroupByAlloc in (* not used in SGanalysis *)

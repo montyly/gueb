@@ -12,6 +12,7 @@ module My_Graph :
         Program_piqi.Program_piqi.function_ list ->
         int list ->
         int list ->
+        bool ->
         string ->
         bool ->
         bool -> bool -> bool -> bool -> bool -> bool -> bool -> 'a -> unit

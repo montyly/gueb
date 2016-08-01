@@ -1075,7 +1075,7 @@ struct
     (*
      * Check is esp or ebp took stranges values
      * *)
-    let filter_esp_ebp abs verbose=
+    let filter_esp_ebp abs free_stack verbose =
         let val_ebp=get_value_string abs "ebp" in
         let ()  = 
             match val_ebp with
@@ -1094,22 +1094,25 @@ struct
                     | Offsets o -> 
                         if ((List.length o) <> 1) then let () = if (verbose) then Printf.printf("Error4 ! \n") in raise Absenvgenerique.ERROR
                         else
-                            let offset=List.hd (o) in
-(*                            List.filter *)
-                            let stack = abs.stack in
-                            let out_of_scope = HashStack.fold
-                                (fun (name,b_offset) _ l ->
-                                    match name with
-                                    | "esp" ->
-                                            if(b_offset <0xf0000000) then l (* case when for example esp + 0x4, because esp init =0 *)
-                                            else if (b_offset<offset) then ((name,b_offset)::l)
-                                            else l
-                                    | _  -> l
-                                ) stack [] 
-                            in 
-                            let () = List.iter (fun x -> HashStack.remove stack x ) out_of_scope in
-                            let ha = merge_alloc_free_conservatif abs.ha abs.hf in
-                            {stack = stack; register = abs.register ; constant = abs.constant ; heap = abs.heap; ha = ha ; hf = abs.hf}
+                            if(free_stack) then
+                                    let offset=List.hd (o) in
+(*                                    List.filter *)
+                                    let stack = abs.stack in
+                                    let out_of_scope = HashStack.fold
+                                        (fun (name,b_offset) _ l ->
+                                            match name with
+                                            | "esp" ->
+                                                    if(b_offset <0xf0000000) then l (* case when for example esp + 0x4, because esp init =0 *)
+                                                    else if (b_offset<offset) then ((name,b_offset)::l)
+                                                    else l
+                                            | _  -> l
+                                        ) stack [] 
+                                    in 
+                                    let () = List.iter (fun x -> HashStack.remove stack x ) out_of_scope in
+                                    let ha = merge_alloc_free_conservatif abs.ha abs.hf in
+                                    {stack = stack; register = abs.register ; constant = abs.constant ; heap = abs.heap; ha = ha ; hf = abs.hf}
+                             else
+                                    {stack = abs.stack; register = abs.register ; constant = abs.constant ; heap = abs.heap; ha = abs.ha ; hf = abs.hf}
 
     (* 
      * Restore in v1 stack frame values from v2

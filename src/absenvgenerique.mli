@@ -67,7 +67,7 @@ module type AbsEnvGenerique =
       valuesSet ->
       ((int * int) * string * int) list -> bool -> unit 
     val filter_values : valuesSet list -> valuesSet
-    val filter_esp_ebp : absenv -> bool -> absenv
+    val filter_esp_ebp : absenv -> bool -> bool -> absenv
     val filter_he : absenv-> absenv
     val restore_stack_frame : absenv -> absenv -> absenv
     val names_to_he : nameVal list -> he list

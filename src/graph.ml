@@ -568,7 +568,7 @@ struct
 
     (** Value analysis **)
     (* DO NOT USE THIS FUNCTION IF YOU HAVE LOOP, or be ready to take a looong coffee :) *)
-    let rec value_analysis func list_funcs malloc_addr free_addr backtrack dir_output verbose show_values show_call show_free addr_caller  addr_caller_unloop n_caller flow_graph parsed_func =
+    let rec value_analysis func list_funcs malloc_addr free_addr backtrack free_stack dir_output verbose show_values show_call show_free addr_caller  addr_caller_unloop n_caller flow_graph parsed_func =
         let score_childs=ref false in
         let rec merge_father fathers m=
             match fathers with
@@ -658,7 +658,7 @@ struct
                                 try
                                     let () = if(show_call) then Printf.printf "Call %d %d (bb %x) 0x%x:%d %s | %s\n" (!current_call) (!number_call) (bb_ori.addr_bb) n.addr bb_ori.unloop func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let () = flush Pervasives.stdout in
-                                    let (vsa,score)=value_analysis (func_eip,func_bbs,func_name) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) dir_output verbose show_values show_call show_free bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
+                                    let (vsa,score)=value_analysis (func_eip,func_bbs,func_name) list_funcs malloc_addr free_addr (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) free_stack dir_output verbose show_values show_call show_free bb_ori.addr_bb bb_ori.unloop number_call_prev flow_graph parsed_func in
                                     let () = if(verbose) then Printf.printf "End call %d %x:%d %s | %s\n"  (!current_call) n.addr bb_ori.unloop   func_name (String.concat " " (List.map print_backtrack backtrack )) in
                                     let () = check_uaf func_bbs (((n.addr,bb_ori.unloop),func_name,!current_call)::backtrack) n.addr in 
                                     let () = if(flow_graph) then let _ = Stack.pop call_stack in () 
@@ -666,7 +666,7 @@ struct
                                     let () = current_call:=number_call_prev in
                                     let () = score_childs:=(||) (!score_childs) score in
                                     try
-                                        n.vsa<-Absenv_v.filter_esp_ebp vsa verbose 
+                                        n.vsa<-Absenv_v.filter_esp_ebp vsa false verbose 
                                      with
                                         | Absenvgenerique.ERROR -> 
                                             let () = if (verbose) then 
@@ -1246,7 +1246,7 @@ struct
             | NOT_RET_NOT_LEAF -> 
                 (!count) 
 
-    let launch_value_analysis func_name list_funcs list_malloc list_free dir_output verbose show_values show_call show_free flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
+    let launch_value_analysis func_name list_funcs list_malloc list_free free_stack dir_output verbose show_values show_call show_free flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
         try
             let () = Hashtbl.clear call_stack_tbl in
             let () = Stack.clear call_stack in
@@ -1255,7 +1255,7 @@ struct
             let () = Uaf_v.clear () in
             let (eip,bbs,name) = find_func_name func_name list_funcs in
             let () = List.iter (fun x -> init_value x ) bbs  in
-            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) dir_output verbose show_values show_call show_free  0 0 0 flow_graph parsed_func in
+            let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) free_stack dir_output verbose show_values show_call show_free  0 0 0 flow_graph parsed_func in
             let () = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
             print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
         with

@@ -22,8 +22,8 @@ sig
     val classical_chunk : unit -> chunk_t
 
     val create_cst : int -> valuesSet
-    val merge_he : he list -> he list -> he list
-    val merge_alloc_free_conservatif : he list -> he list -> he list
+(*    val merge_he : he list -> he list -> he list
+    val merge_alloc_free_conservatif : he list -> he list -> he list *)
     val merge_values_two : valuesSet -> valuesSet -> valuesSet
     val merge : absenv-> absenv-> absenv
     val update : absenv-> absenv-> absenv(* init -> input ->   *)
@@ -77,6 +77,7 @@ sig
 
     val top_value : unit -> valuesSet
 
+    val free_stack : absenv -> ((int * int) * string * int) list -> absenv
     val clean_vsa : absenv -> unit 
 
     val restore_esp : absenv -> absenv

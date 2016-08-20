@@ -24,16 +24,20 @@ let print_graph = ref false
 let flow_graph_dot = ref false
 let flow_graph_gml = ref false
 let flow_graph_disjoint = ref false
-let max_depth = ref 400
+let max_func = ref 400
 let group_by = ref "alloc"
-let free_stack = ref true
-
+let no_clean_stack = ref false
+let analyze_irreducible_loop = ref false
+let depth = ref None 
+let absenv = ref ""
 
 (* Signature *)
 module type TAnalysis = functor (Absenv_v : AbsEnvGenerique)-> functor (Ir_v : IR) -> functor (Stubfunc_v : Stubfunc) -> functor (Uaf_v : UafGenerique) ->
 sig
-      val launch_analysis : string ->  string ->  unit
-      val launch_analysis_list : string ->  string list ->  unit
+      val init : string -> unit
+      val launch_analysis : string  ->  unit
+      val launch_analysis_list : string list ->  unit
+      val end_analysis : unit -> unit
 end ;;
 
 (* Main analysis *)
@@ -41,10 +45,26 @@ module GuebAnalysis: TAnalysis = functor (Absenv_v : AbsEnvGenerique) -> functor
 struct
     module GraphIR = My_Graph (Absenv_v) (Ir_v) (Stubfunc_v) (Uaf_v)
  
+    let list_funcs = ref []
+    let malloc = ref []
+    let free = ref []
+
     let parsed_func = Hashtbl.create 100
 
-    let launch_analysis program_file func_name  = 
-        let () = Printf.printf "Launch the analysis on %s\n" func_name in
+    let counter = 
+        let ctr = ref (-1) in
+        fun () -> 
+            incr ctr; 
+            !ctr;;
+
+    let init program_file =
+        let () =  GraphIR.set_max_func (!max_func) in
+        let () = if (!analyze_irreducible_loop) then GraphIR.set_irreducible_loop () in
+        let () = 
+                match (!depth) with
+                | None -> ()
+                | Some d -> GraphIR.set_depth d 
+        in
         let channel =
             try open_in_bin program_file 
             with _ -> let () = Printf.printf "Reil.REIL file not found (have you used -reil ? )\n" in exit 0
@@ -53,16 +73,21 @@ struct
         let raw_program = parse_program buf in
         let () = close_in channel in 
         let raw_heap_func = raw_program.heap_func in
-        let list_funcs = raw_program.functions in
-        let malloc = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
-        let free = List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free in
-        let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_value_analysis func_name list_funcs malloc free (!free_stack)  dir (!verbose) (!show_values) (!show_call) (!show_free)  ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
-        Printf.printf "--------------------------------\n"
+        let () = list_funcs := raw_program.functions in
+        let () = malloc := List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_malloc in
+        free := List.map (fun x -> Int64.to_int x) raw_heap_func.call_to_free
+        
 
-    let launch_analysis_list program_file funcs_name = 
-        List.iter (fun x -> launch_analysis program_file x) funcs_name ;
-        GraphIR.end_analysis ()
+    let launch_analysis func_name  = 
+        let () = Printf.printf "Launch the analysis on %s (%d)\n" func_name (counter ())in
+        let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
+        let _ = GraphIR.launch_value_analysis func_name (!list_funcs) (!malloc) (!free) (not (!no_clean_stack)) dir (!verbose) (!show_values) (!show_call) (!show_free)  ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
+        let () = Printf.printf "--------------------------------\n" in
+        flush Pervasives.stdout
+
+    let launch_analysis_list funcs_name = List.iter (fun x -> launch_analysis x) funcs_name 
+        
+    let end_analysis () = GraphIR.end_analysis ()
     end ;;
 
 (* Callgraph analysis *)
@@ -70,23 +95,57 @@ module SuperGraphAnalysis : TAnalysis = functor (Absenv_v : AbsEnvGenerique) -> 
 struct
     module GraphIR = My_Graph (Absenv_v) (Ir_v) (Stubfunc_v) (Uaf_v)
  
+    let list_funcs = ref []
     let parsed_func = Hashtbl.create 100
 
-    let launch_analysis program_file func_name  = 
+    let init program_file =
+        let () =  GraphIR.set_max_func (!max_func) in
         let channel = open_in_bin program_file in
         let buf = Piqirun.init_from_channel channel in
         let raw_program = parse_program buf in
         let () = close_in channel in 
-        let list_funcs = raw_program.functions in
+        list_funcs := raw_program.functions
+
+
+    let launch_analysis func_name  = 
         let dir = Printf.sprintf "%s/%s" (!dir_output) (func_name) in
-        let _ = GraphIR.launch_supercallgraph_analysis func_name list_funcs  dir (!max_depth) (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
+        let _ = GraphIR.launch_supercallgraph_analysis func_name (!list_funcs)  dir (!verbose) (!show_call) ((!flow_graph_gml) || (!flow_graph_dot) ) (!flow_graph_gml) (!flow_graph_dot) (!flow_graph_disjoint) parsed_func in
         flush Pervasives.stdout
 
-    let launch_analysis_list program_file funcs_name = 
-        List.iter (fun x -> launch_analysis program_file x) funcs_name 
+    let launch_analysis_list funcs_name = List.iter (fun x -> launch_analysis  x) funcs_name 
+    
+    let end_analysis () = ()
+end ;;
+
+(* Callgraph analysis *)
+module ExportFuncs : TAnalysis = functor (Absenv_v : AbsEnvGenerique) -> functor (Ir_v : IR)-> functor (Stubfunc_v : Stubfunc) -> functor (Uaf_v : UafGenerique)->
+struct
+    module GraphIR = My_Graph (Absenv_v) (Ir_v) (Stubfunc_v) (Uaf_v)
+ 
+    let list_funcs = ref []
+
+    let init program_file =
+        let channel = open_in_bin program_file in
+        let buf = Piqirun.init_from_channel channel in
+        let raw_program = parse_program buf in
+        let () = close_in channel in 
+        list_funcs := raw_program.functions
+
+    let launch_analysis func_name  = 
+        let _ = GraphIR.export_func_unloop (!list_funcs) func_name in
+        ()
+
+    let launch_analysis_list funcs_name = List.iter (fun x -> launch_analysis x) funcs_name 
+    
+    let end_analysis () = ()
 end ;;
 
 let launch_stub stub p f uaf to_list =
+    let m_absenv = match (!absenv) with
+        | "2" -> (module Absenv2.AbsEnv :Absenvgenerique.AbsEnvGenerique)
+        | "3" -> (module Absenv3.AbsEnv :Absenvgenerique.AbsEnvGenerique)
+        | _ -> (module Absenv.AbsEnv :Absenvgenerique.AbsEnvGenerique)
+    in let module Absenv = (val m_absenv : Absenvgenerique.AbsEnvGenerique) in
     let m_uaf = match uaf with
         | "alloc" -> (module Uafgroupbyalloc.UafGroupByAlloc : Uafgenerique.UafGenerique)
         | "free" -> (module Uafgroupbyfree.UafGroupByFree : Uafgenerique.UafGenerique)
@@ -99,10 +158,12 @@ let launch_stub stub p f uaf to_list =
         | "tiff2pdf" -> (module Stubfunc.StubTiff2pdfLibtiff : Stubfunc.Stubfunc)  
         | _ -> (module Stubfunc.StubNoFunc : Stubfunc.Stubfunc) 
     in let module Stub = (val m_stub : Stubfunc.Stubfunc) in
-    let module Analysis = GuebAnalysis(Absenv.AbsEnv)(Reil.REIL)(Stub)(Uaf) in
-    match to_list with
-    | false -> Analysis.launch_analysis p (List.hd f)
-    | true ->  Analysis.launch_analysis_list p f
+    let module Analysis = GuebAnalysis(Absenv)(Reil.REIL)(Stub)(Uaf) in
+    let () = Analysis.init p in
+    let () = match to_list with
+    | false -> Analysis.launch_analysis (List.hd f)
+    | true ->  Analysis.launch_analysis_list f in
+    Analysis.end_analysis ();;
 
 let read_lines_file filename = 
     let lines = ref [] in
@@ -131,26 +192,44 @@ let () =
         ("-func", Arg.String (fun x ->  func:=x), "Name of the entry point function, default : main");
         ("-funcs-file", Arg.String (fun x ->  funcs_file:=x), "Name of the files containing all the functions name");
         ("-stub", Arg.String (fun x -> stub_name:=x), "Name of the stub module");
-        ("-type", Arg.Int (fun x -> type_analysis:=x), "\n\t0 : uaf detection (default)\n\t1 : compute callgraph size (NOT WORKING on BinNavi 6)\n\t2 : uaf detection on a set of functions\n\t3 : compute callgraph size on a set of functions");
-        ("-depth", Arg.Int (fun x -> max_depth:=x), "Max number of funcs to analyze (type 1 and 3). Default 400");
-        ("-output-dir", Arg.String (fun x -> dir_output:=x), "Output directory, default /tmp");
-        ("-groupby", Arg.String (fun x -> group_by:=x), "Group UaF by:\n\talloc (default)\n\tfree");
-        ("-no-free-stack", Arg.Set free_stack, "After a call, do not free stack values");
+        ("-type", Arg.Int (fun x -> type_analysis:=x), "\n\t0 : uaf detection (default)\n\t1 : compute callgraph size \n\t2 : uaf detection on a set of functions\n\t3 : compute callgraph size on a set of functions");
+        ("-output-dir", Arg.String (fun x -> dir_output:=x), "Output directory. Default results");
+        ("-groupby", Arg.String (fun x -> group_by:=x), "Group UaF by (experimental):\n\talloc (default)\n\tfree");
+        ("-no-clean-stack", Arg.Set no_clean_stack, "Do not clean stack values after return");
+(*        ("-unroll-irreducible", Arg.Set analyze_irreducible_loop, "Unroll irreducible loops");*)
+        ("-depth", Arg.Int (fun x -> depth:=Some x), "Max depth of functions analyzed. Default unlimited");
+        ("-size", Arg.Int (fun x -> max_func:=x), "Max number of funcs to analyze. Default 400");
+        ("-absenv", Arg.String (fun x -> absenv:= x), "Memory model selection: (experimental)\n\t 1 -> default (HA/HF)\n\t 2 -> Pointer based (more precise)\n\t 3 -> Pointer based + use-after-return detection");
     ] in
-    let _ =  Arg.parse speclist print_endline "GUEB : Static analyzer\n"  in
+    let _ =  Arg.parse speclist print_endline "GUEB: Experimental static analyzer detecting heap and stack use-after-free on binary code.\nGUEB is still under intensive development, for any questions, please contact josselin.feist[@]imag.fr\n"  in
     let module Uaf = Uafgroupbyalloc.UafGroupByAlloc in (* not used in SGanalysis *)
     match(!type_analysis) with
         | 0 ->
             launch_stub (!stub_name) (!program) [(!func)] (!group_by) false
         | 1 -> 
             let module SGanalysis = SuperGraphAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in
-            SGanalysis.launch_analysis (!program) (!func) ;
+            SGanalysis.init (!program) ;
+            SGanalysis.launch_analysis (!func) ;
+            SGanalysis.end_analysis () ;
         | 2 ->
             let funcs=read_lines_file (!funcs_file) in
             launch_stub (!stub_name) (!program) funcs (!group_by) true
         | 3 ->
             let funcs=read_lines_file (!funcs_file) in
             let module SGanalysis = SuperGraphAnalysis(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in
-            SGanalysis.launch_analysis_list (!program) funcs ;
+            SGanalysis.init (!program) ;
+            SGanalysis.launch_analysis_list funcs ;
+            SGanalysis.end_analysis () ;
+        | 4 -> 
+            let module SGanalysis = ExportFuncs(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in
+            SGanalysis.init (!program) ;
+            SGanalysis.launch_analysis (!func) ;
+            SGanalysis.end_analysis () ;
+        | 5 -> 
+            let funcs=read_lines_file (!funcs_file) in
+            let module SGanalysis = ExportFuncs(Absenv.AbsEnv)(Reil.REIL)(StubNoFunc)(Uaf) in
+            SGanalysis.init (!program) ;
+            SGanalysis.launch_analysis_list funcs ;
+            SGanalysis.end_analysis () ;
         | _ -> 
             Printf.printf "Bad analysis type\n"

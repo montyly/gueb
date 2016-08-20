@@ -26,11 +26,12 @@ struct
         let clear () = Hashtbl.clear sg_uaf
 
         let end_analysis () = 
+                let count = ref 0 in
                 HashTree.iter (fun _k v ->
                         Printf.printf "\n####################\nSame : \n";
-                        List.iter (fun x -> Printf.printf "%s\n" x)  v ;
+                        List.iter (fun x -> count:=(!count) +1 ; Printf.printf "%s\n" x)  v ;
                 ) merge_tree;
-                Printf.printf "\n%d different root causes\n" (HashTree.length merge_tree)
+                Printf.printf "\n%d different root causes (on %d detected)\n" (HashTree.length merge_tree) (!count)
 
         let add_uaf ?(t=SITE_USE) c state =
             let state = List.map (fun x -> add_type x t) state in

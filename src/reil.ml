@@ -509,7 +509,6 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 in
                 let abs=(!abs_ref) in
                 if (List.length vals_arg0>15) then (* too many values, better to put TOP *)
-                        let () = Printf.printf "Number ldm max reach\n" in
                          Absenv_v.set_value_string abs arg2 (Absenv_v.top_value ())
                 else if (List.length vals_arg0>0) then
                     let rec merge_vals_rec vals l =
@@ -588,7 +587,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
          * so check if value3 is a freed block
          * *)
         | Stm ->
-                (
+                begin
                 let arg2=arg_to_string (stmt.arg2) in
                 let vals=Absenv_v.get_value_string abs arg2 in
                 let names=Absenv_v.values_to_names vals in
@@ -596,7 +595,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 match chunks with
                 | [] -> None
                 | _ -> Some (stmt,chunks,addr)
-                )
+                end
         (*
          * ldm a1,,a3
          * for each value1 a1
@@ -604,7 +603,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
          * so check if value1 is a freed block
          * *)
         | Ldm ->
-                (
+                begin
                 let arg0=arg_to_string (stmt.arg0) in
                 let vals=Absenv_v.get_value_string abs arg0 in
                 let names=Absenv_v.values_to_names vals in
@@ -612,7 +611,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 match chunks with
                 | [] -> None
                 | _ -> Some (stmt,chunks,addr)
-                )
+                end
 
         | Sub|And|Xor|Str|Bsh|Jcc|Add|Nop|Mul|Mod|Div|Or|Bisz|Undef|Unknow -> None;;
 

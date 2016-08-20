@@ -1,6 +1,6 @@
 ##### global definition 
-path_binnavi    = "PATH_TO_BINNAVI"
-path_dependency = "PATH_TO_GUEB"+"/dependency/"
+path_binnavi    = "/home/monty/tools/platform/binnavi/target/"
+path_dependency = "/home/monty/Desktop/gueb/"+"/dependency/"
 
 binnavi_host        = 'localhost'
 binnavi_db_name     = 'GUEB-bin6-ida68'

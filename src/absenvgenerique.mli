@@ -18,8 +18,8 @@ module type AbsEnvGenerique =
       int ref -> ((int * int) * string * int) list -> valuesSet
     val classical_chunk : unit -> chunk_t
     val create_cst : int -> valuesSet
-    val merge_he : he list -> he list -> he list
-    val merge_alloc_free_conservatif : he list -> he list -> he list
+(*    val merge_he : he list -> he list -> he list*)
+(*    val merge_alloc_free_conservatif : he list -> he list -> he list*)
     val merge_values_two : valuesSet -> valuesSet -> valuesSet
     val merge : absenv -> absenv -> absenv
     val update : absenv -> absenv -> absenv
@@ -75,6 +75,7 @@ module type AbsEnvGenerique =
     val check_use_heap : nameVal list -> bool
     val retn_not_analyse : unit -> valuesSet
     val top_value : unit -> valuesSet
+    val free_stack : absenv -> ((int * int) * string * int) list -> absenv
     val clean_vsa : absenv -> unit
     val restore_esp : absenv -> absenv
     val malloc_ret : absenv -> ((int*int)*string*int) list -> absenv

@@ -1030,20 +1030,12 @@ struct
      * Remove elem in list that are not coming from the heap
      * *)
     let clean_he_for_free v =
-        let free_elems=List.map 
-            (fun x -> 
+        List.fold_left
+            (fun acc x -> 
                 match x.base_vs with
-                | HE e -> Some e
-                | Init _ | Constant -> None
-            ) v
-        in 
-        let free_elems_cleans=List.fold_left 
-            (fun acc x -> match x with
-                | Some x -> x::acc
-                | None -> acc
-            ) [] free_elems
-        in
-        free_elems_cleans
+                | HE e -> e::acc
+                | Init _ | Constant -> acc
+            ) [] v
     
     (*
      * Checking for double-free
@@ -1177,24 +1169,16 @@ struct
         filter names []
         
     let check_uaf names hf =
-        let ret = List.map 
-        (fun x -> 
+        List.fold_left (fun acc x -> 
             match x with
-            | Reg _ -> None
+            | Reg _ -> acc
             | BaseOffset b ->
                 match b.base with
                 | HE h-> 
-                    if (List.exists (fun x -> same_chunk x h) hf) then Some h
-                    else None
-                | Init _ | Constant -> None
-        ) names
-        in
-        List.fold_left 
-            (fun x y -> 
-                match y with
-               | None -> x
-               | Some c -> (c)::x
-            ) [] ret;;
+                    if (List.exists (fun x -> same_chunk x h) hf) then h::acc
+                    else acc
+                | Init _ | Constant -> acc
+        ) [] names
 
     let check_use_heap names =
         let ret = List.map 

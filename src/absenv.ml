@@ -20,7 +20,7 @@ struct
             size : int;
             type_chunk : chunk_t ; (* 0 : heap, 1 : init mem, hack when no init memory, we class it as chunk *)
             mutable state_alloc : ((int*int)*string*int) list; (* addr it func_name number_func *)
-            mutable state_free : (((int*int)*string*int) list) list;
+            mutable state_free : (((int*int)*string*int) list) list; (* in case of chunk as valueSet, this never use, until uaf found, then takes value from hf *)
         };;
 
     type he = chunk;;
@@ -247,15 +247,15 @@ struct
         | INIT -> "init_val"
         | NORMAL -> "chunk"
  
-    let pp_chunk he =
-        let str= 
+    let pp_chunk he = pp_chunk_full he
+(*        let str= 
         begin
             match he.type_chunk with
             | NORMAL -> "chunk"
             | INIT -> "val_init"
         end
         in 
-        str^(string_of_int he.base_chunk);;
+        str^(string_of_int he.base_chunk);;*)
     
     let pp_he h =
         "\t"^(String.concat " \n\t" (List.map (fun x -> pp_chunk_full x) h))
@@ -1004,20 +1004,11 @@ struct
      * Remove elem in list that are not coming from the heap
      * *)
     let clean_he_for_free v =
-        let free_elems=List.map 
-            (fun x -> 
+        List.fold_left (fun acc x ->
                 match x.base_vs with
-                | HE e -> Some e
-                | Init _ | Constant -> None
-            ) v
-        in 
-        let free_elems_cleans=List.filter 
-            (fun x -> match x with
-                | Some _ -> true
-                | None -> false
-            ) free_elems
-        in
-        free_elems_cleans
+                | HE e -> e::acc
+                | Init _ | Constant -> acc
+            ) [] v
     
     (*
      * Checking for double-free
@@ -1030,10 +1021,7 @@ struct
         begin
         let chunk_in chunk chunks=
             List.exists 
-                (fun x  -> 
-                    match x with
-                    | Some h -> (same_base (HE chunk) (HE h))
-                    | None -> false  
+                (fun x  -> (same_base (HE chunk) (HE x))
                 ) chunks 
         in
         let free_elems_cleans = clean_he_for_free v in
@@ -1049,18 +1037,12 @@ struct
         | TOP -> raise Absenvgenerique.ERROR
         | Values v -> 
             let () = if(show_free) then Printf.printf "Free on %s \n" (pp_valuesset (Values v)) in
-            let chunk_not_in chunk chunks=
-                List.exists 
-                    (fun x  -> 
-                        match x with
-                        | Some h -> not (same_base (HE chunk) (HE h))
-                        | None -> false  
-                ) chunks in
-        let free_elems_cleans = clean_he_for_free v in
-        let new_ha=List.filter (fun x->chunk_not_in x free_elems_cleans) ha in
-        let new_hf=(List.map (fun x -> match x with | Some a -> a.state_free<-state::a.state_free ; a | None -> raise Absenvgenerique.ERROR)  free_elems_cleans)@hf in
-        let () = abs.ha <- merge_alloc_free_conservatif new_ha new_hf in (* may be useless*)
-        abs.hf <- new_hf
+            let chunk_not_in chunk chunks = List.exists (fun x -> not (same_base (HE chunk) (HE x)) ) chunks in
+            let free_elems_cleans = clean_he_for_free v in
+            let new_ha=List.filter (fun x->chunk_not_in x free_elems_cleans) ha in
+            let new_hf=(List.map (fun a -> {a with state_free=state::a.state_free})  free_elems_cleans)@hf in
+            let () = abs.ha <- merge_alloc_free_conservatif new_ha new_hf in (* may be useless*)
+            abs.hf <- new_hf
 
     (* 
      * Filter values
@@ -1145,25 +1127,22 @@ struct
         filter names []
         
     let check_uaf names hf =
-        let ret = List.map 
-        (fun x -> 
-            match x with
-            | Reg _ -> None
-            | BaseOffset b ->
-                match b.base with
-                | HE h-> 
-                    if (List.exists (fun x -> same_chunk x h) hf) then Some h
-                    else None
-                | Init _ | Constant -> None
-        ) names
-        in
-        List.fold_left 
-            (fun x y -> 
-                match y with
-               | None -> x
-               | Some c -> (c)::x
-            ) [] ret;;
-
+        List.fold_left (fun acc x ->
+                match x with
+                | Reg _ -> acc 
+                | BaseOffset b -> 
+                        match b.base with
+                        | HE h->
+                            begin 
+                            try
+                                let f = List.find (fun x -> same_chunk x h) hf in
+                                ({h with state_free=f.state_free})::acc
+                            with 
+                                Not_found -> acc
+                            end
+                        | Init _ | Constant -> acc
+        ) [] names
+        
     let check_use_heap names =
         let ret = List.map 
             (fun x -> 
@@ -1187,6 +1166,8 @@ struct
          | Values vs -> List.iter clean_vs vs ;;*)
 
     let clean_vsa abs = 
+        let () = abs.ha <- [] in
+        let () = abs.hf <- [] in
         let heap = abs.heap in
         let stack = abs.stack in
         let constant = abs.constant in

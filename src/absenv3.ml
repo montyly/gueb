@@ -287,7 +287,7 @@ struct
         match t with
         | INIT -> "init_val"
         | NORMAL -> "chunk"
-        | STACK -> "chunk"
+        | STACK -> "uar"
  
     let pp_chunk he =
         let str= 
@@ -1123,21 +1123,12 @@ struct
      * Remove elem in list that are not coming from the heap
      * *)
     let clean_he_for_free v =
-        let free_elems=List.map 
-            (fun x -> 
+        List.fold_left 
+            (fun acc x -> 
                 match x.base_vs with
-                | HE e -> Some e
-                | Init _ | Constant | Stack _ -> None
-            ) v
-        in 
-        let free_elems_cleans=List.fold_left 
-            (fun acc x -> match x with
-                | Some x -> x::acc
-                | None -> acc
-            ) [] free_elems
-        in
-        free_elems_cleans
-
+                | HE e -> e::acc
+                | Init _ | Constant | Stack _ -> acc
+            ) [] v
     
     (*
      * Checking for double-free
@@ -1274,35 +1265,20 @@ struct
         filter names []
         
     let check_uaf names hf =
-        let ret = List.map 
-        (fun x -> 
+        List.fold_left (fun acc x -> 
             match x with
-            | Reg _ -> None
+            | Reg _ -> acc
             | BaseOffset b ->
                 match b.base with
                 | HE h-> 
-                    if (List.exists (fun x -> same_chunk x h) hf) then Some h
-                    else None
+                    if (List.exists (fun x -> same_chunk x h) hf) then h::acc
+                    else acc
                 | Stack (_,(FREE,cs)) -> 
-                        Printf.printf "%s \n" (pp_state cs);
-(*                        let adapte_cs cs = 
-                                let ((addr,it),_,n) = List.hd cs in
-                                let tl = List.tl cs in
-                                let ((_,_),f,_) = (List.hd tl) in
-                                ((addr,it),f,n)::tl
-                        in
-                        let cs = adapte_cs cs in*)
                         let get_n ((_,_),_,n) = n in
-                        Some {base_chunk = get_n (List.hd cs); size = 0 ; type_chunk = STACK ; state = FREE ; state_alloc = cs; state_free = [ cs] } 
-                | Init _ | Constant | Stack (_,(ALLOC,_)) -> None
-        ) names
-        in
-        List.fold_left 
-            (fun x y -> 
-                match y with
-               | None -> x
-               | Some c -> (c)::x
-            ) [] ret;;
+                        ({base_chunk = get_n (List.hd cs); size = 0 ; type_chunk = STACK ; state = FREE ; state_alloc = cs; state_free = [ cs] })::acc
+                | Init _ | Constant | Stack (_,(ALLOC,_)) -> acc
+        ) [] names
+
 
     let check_use_heap names =
         let ret = List.map 

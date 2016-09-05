@@ -25,6 +25,7 @@ let flow_graph_dot = ref false
 let flow_graph_gml = ref false
 let flow_graph_disjoint = ref false
 let max_func = ref 400
+let max_ins = ref None
 let group_by = ref "alloc"
 let no_clean_stack = ref false
 let analyze_irreducible_loop = ref false
@@ -58,7 +59,12 @@ struct
             !ctr;;
 
     let init program_file =
-        let () =  GraphIR.set_max_func (!max_func) in
+        let () = Printf.printf "Lauch VSA on %s\n" program_file in
+        let () = GraphIR.set_size (!max_func) in
+        let () = match !max_ins with
+                  | Some d -> GraphIR.set_max_ins d 
+                  | None -> () 
+        in
         let () = if (!analyze_irreducible_loop) then GraphIR.set_irreducible_loop () in
         let () = 
                 match (!depth) with
@@ -99,7 +105,11 @@ struct
     let parsed_func = Hashtbl.create 100
 
     let init program_file =
-        let () =  GraphIR.set_max_func (!max_func) in
+        let () =  GraphIR.set_size (!max_func) in        
+        let () =  match !max_ins with
+                  | Some d -> GraphIR.set_max_ins d 
+                  | None -> () 
+        in
         let channel = open_in_bin program_file in
         let buf = Piqirun.init_from_channel channel in
         let raw_program = parse_program buf in
@@ -199,6 +209,7 @@ let () =
 (*        ("-unroll-irreducible", Arg.Set analyze_irreducible_loop, "Unroll irreducible loops");*)
         ("-depth", Arg.Int (fun x -> depth:=Some x), "Max depth of functions analyzed. Default unlimited");
         ("-size", Arg.Int (fun x -> max_func:=x), "Max number of funcs to analyze. Default 400");
+        ("-size-ins", Arg.Int (fun x -> max_ins:=Some x), "Max number of ins to analyze. Default 400");
         ("-absenv", Arg.String (fun x -> absenv:= x), "Memory model selection: (experimental)\n\t 1 -> default (HA/HF)\n\t 2 -> Pointer based (more precise)\n\t 3 -> Pointer based + use-after-return detection");
     ] in
     let _ =  Arg.parse speclist print_endline "GUEB: Experimental static analyzer detecting heap and stack use-after-free on binary code.\nGUEB is still under intensive development, for any questions, please contact josselin.feist[@]imag.fr\n"  in

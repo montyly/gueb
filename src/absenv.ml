@@ -263,7 +263,7 @@ struct
     let pp_base b=
         match b with    
         | Constant -> pp_cst 
-        | Init r-> pp_register r
+        | Init r-> pp_register r^"0"
         | HE h-> pp_chunk h;;
 
     (* Small trick, if big number print as "-value" *)
@@ -299,7 +299,7 @@ struct
         let constant = abs.constant in
         let register = abs.register in
         let txt = HashRegister.fold (fun reg values txt -> txt ^"\t"^(pp_register reg )^" : "^(pp_valuesset values)^"\n" ) register "Register\n" in
-        let txt = HashStack.fold (fun (reg,off) values txt -> txt ^"\t"^(pp_register reg) ^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) stack (Printf.sprintf "%sStack\n" txt) in
+        let txt = HashStack.fold (fun (reg,off) values txt -> txt ^"\t"^(pp_register reg) ^"0 "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) stack (Printf.sprintf "%sStack\n" txt) in
         let txt = HashHeap.fold (fun (_,off,_) (chunk,values) txt -> txt ^"\t"^(pp_chunk chunk)^" "^(pp_offset off)^" : "^(pp_valuesset values)^"\n" ) heap (Printf.sprintf "%sHeap\n" txt) in
         let txt = HashConstant.fold (fun off values txt -> txt ^"\t"^(pp_cst)^" "^( pp_offset off )^" : "^(pp_valuesset values)^"\n" ) constant (Printf.sprintf "%sConstant\n" txt) in
         txt ^ (Printf.sprintf "Ha : %s \nHf : %s\n\n" (pp_he abs.ha) (pp_he abs.hf)        )

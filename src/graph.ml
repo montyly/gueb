@@ -125,12 +125,18 @@ struct
     let number_analyzed_func = ref 0
 
     let max_func = ref 400
+    
+    let max_ins = ref None
+    
+    let number_analyzed_ins = ref 0
 
     let set_irreducible_loop () = irreducible := true
     
     let set_depth d = depth_max := Some d
 
-    let set_max_func d = max_func := d
+    let set_size d = max_func := d
+    
+    let set_max_ins d = max_ins := Some d
 
     let is_sup_depth l = match (!depth_max) with        
                         | None -> false
@@ -518,8 +524,8 @@ struct
                      | Some (_stmt,chunks,addr) ->
                          let _,b,_ = (List.hd backtrack) in
                          let state = (addr,b,!current_call)::backtrack in
-                         List.iter (fun c -> add_uaf c [state]) chunks 
-                         (*Printf.printf "Uaf find :%s\n" ((let a,it = addr in Printf.sprintf "%x:%d " a it )^(Ir_v.print_stmt stmt)^(Absenv_v.pp_he chunks) )*)
+                         List.iter (fun c -> add_uaf c [state]) chunks ;
+                         (*Printf.printf "Uaf find :%s\n" ((let a,it = addr in Printf.sprintf "%x:%d " a it )^(Ir_v.print_stmt stmt)^(Absenv_v.pp_he chunks) );*)
              ) uaf_result
 (*        if (List.exists (
              fun x -> match x with
@@ -583,6 +589,12 @@ struct
         let () = Stack.iter (fun x -> l := x::!l) s in
         !l
 
+    let incr_number_ins () = number_analyzed_ins := (!number_analyzed_ins) + 1
+
+    let is_max_ins () = match !max_ins with
+        | None -> false
+        | Some d -> d < (!number_analyzed_ins)
+
     (** Value analysis **)
     (* DO NOT USE THIS FUNCTION IF YOU HAVE LOOP, or be ready to take a looong coffee :) *)
     let rec value_analysis func list_funcs malloc_addr free_addr backtrack clean_stack dir_output verbose show_values show_call show_free addr_caller  addr_caller_unloop n_caller flow_graph parsed_func =
@@ -594,6 +606,7 @@ struct
         in
         let (func_eip,func_bbs,func_name)=func in
         let value_analysis_nodes_rec n fathers bb_ori=
+            let () = incr_number_ins () in
              (* Put init values *)
             let () = n.vsa<-Absenv_v.update n.init (merge_father fathers (Absenv_v.initAbsenEnv ())) in
             let () =
@@ -654,6 +667,10 @@ struct
                                 n.vsa <- ignore_call vsa 
                     else if (!number_analyzed_func > !max_func) then 
                                 let () = if (verbose) then Printf.printf "Number of func max reached\n" in
+                                let vsa = Absenv_v.restore_esp n.vsa in
+                                n.vsa <- ignore_call vsa 
+                    else if(is_max_ins ()) then
+                                let () = if (verbose) then Printf.printf "Number of ins max reached\n" in
                                 let vsa = Absenv_v.restore_esp n.vsa in
                                 n.vsa <- ignore_call vsa 
                     else
@@ -1371,6 +1388,7 @@ struct
 
     let launch_value_analysis func_name list_funcs list_malloc list_free clean_stack dir_output verbose show_values show_call show_free flow_graph flow_graph_dot flow_graph_gml flow_graph_disjoint parsed_func =
         try
+            let () = number_analyzed_ins := 0 in
             let () = number_analyzed_func := 0 in
             let () = Hashtbl.clear call_stack_tbl in
             let () = Stack.clear call_stack in
@@ -1381,12 +1399,14 @@ struct
             let () = List.iter (fun x -> init_value x ) bbs  in
             let _ = value_analysis (eip,bbs,name)  list_funcs list_malloc list_free ([(eip.addr_bb,0),name,0]) clean_stack dir_output verbose show_values show_call show_free  0 0 0 flow_graph parsed_func in
             let () = check_uaf bbs [(eip.addr_bb,0),name,!current_call] (0) in
+            let () = Printf.printf "End of analysis (number of ins analyzed %d)\n" (!number_analyzed_ins) in
             print_sg dir_output (eip.addr_bb/0x100) (!saved_call) list_funcs (!saved_ret_call) flow_graph_dot flow_graph_gml flow_graph_disjoint
         with
             | Not_found -> Printf.printf "Func %s : error (not found)\n" func_name
             | NOT_RET (_vsa,_score) -> ()
             | NOT_RET_NOT_LEAF -> ()
 
-        let end_analysis () = Uaf_v.end_analysis ()
+        let end_analysis () = 
+                Uaf_v.end_analysis ()
 end;;
 

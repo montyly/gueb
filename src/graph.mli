@@ -6,7 +6,8 @@ module My_Graph :
         Program_piqi.Program_piqi.function_ list -> string -> unit
       val set_irreducible_loop : unit -> unit
       val set_depth : int -> unit
-      val set_max_func  : int -> unit
+      val set_size  : int -> unit
+      val set_max_ins  : int -> unit
       val launch_supercallgraph_analysis :
         string ->
         Program_piqi.Program_piqi.function_ list ->

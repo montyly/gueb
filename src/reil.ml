@@ -127,6 +127,7 @@ type register_reil=
  |SF
  |DF
  |ZF
+ |PF
  |DSBASE
  |SSBASE;;
 
@@ -202,6 +203,7 @@ let create_arg size_arg type_arg value_reil=
     | _,_,"SF"->Register (SF)
     | _,_,"DF"->Register (DF)
     | _,_,"ZF"->Register (ZF)
+    | _,_,"PF"->Register (PF)
     | _,_,"dsbase"-> Register (DSBASE)
     | _,_,"ssbase"-> Register (SSBASE)
     | _,_,"" -> Empty
@@ -320,6 +322,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
             | SF -> "SF"
             | DF -> "DF"
             | ZF -> "ZF"
+            | PF -> "PF"
             | DSBASE -> "dsbase"
             | SSBASE -> "ssbase";;
 

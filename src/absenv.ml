@@ -19,13 +19,11 @@ struct
             base_chunk : int;
             size : int;
             type_chunk : chunk_t ; (* 0 : heap, 1 : init mem, hack when no init memory, we class it as chunk *)
-            mutable state_alloc : ((int*int)*string*int) list; (* addr it func_name number_func *)
-            mutable state_free : (((int*int)*string*int) list) list; (* in case of chunk as valueSet, this never use, until uaf found, then takes value from hf *)
+            mutable state_alloc : Gueb_type.call_stack; (* addr it func_name number_func *)
+            mutable state_free : Gueb_type.call_stack list; (* in case of chunk as valueSet, this never use, until uaf found, then takes value from hf *)
         };;
 
     type he = chunk;;
-
-    type init = chunk;;
 
     type kset = 
         | Offsets of offset list
@@ -189,8 +187,6 @@ struct
         | TOP -> []
         | Values v -> values_to_names_rec v [];;
              
-    let get_hf abs = abs.hf
-
     (* 
      * Comparaison functions
      * *)
@@ -205,19 +201,6 @@ struct
         | HE h1, HE h2 -> same_chunk h1 h2
         | Constant , Init _ | Constant , HE _ | Init _ , Constant | Init _ , HE _ | HE _ , Constant | HE _ , Init _  -> false;;
         
-    let same_base_offset b1 b2 =
-        match (b1.base,b2.base) with
-        | Constant ,Constant -> b1.offset==b2.offset
-        | Init r1, Init r2 ->r1=r2 &&  b1.offset==b2.offset
-        | HE h1 , HE h2 -> (same_chunk  h1 h2) && b1.offset==b2.offset
-        | Constant , Init _ | Constant , HE _ | Init _ , Constant | Init _ , HE _ | HE _ , Constant | HE _ , Init _  -> false;;
-
-    let same_name n1 n2 =  
-        match (n1,n2) with
-        | Reg r1,Reg r2 -> r1=r2
-        | BaseOffset b1, BaseOffset b2 -> same_base_offset b1 b2
-        | Reg _ , BaseOffset _ | BaseOffset _ , Reg _ -> false;;
-
     (* 
      * Printy print functions
      * *)
@@ -290,7 +273,7 @@ struct
         | TOP -> "TOP"
         | Values v -> " | " ^(String.concat " | " (List.map (fun x -> pp_valueset x) v))
 
-    let pp_absenv name values =
+    let _pp_absenv name values =
         pp_name name ^" : "^(pp_valuesset values) 
 
     let pp_absenvs abs =
@@ -311,11 +294,6 @@ struct
             | hd::tl -> copy_vals_rec tl (({base_vs=hd.base_vs;offsets=hd.offsets})::l)
         in copy_vals_rec v [];;
 
-    let copy_valsset v=
-        match v with
-        | TOP -> TOP
-        | Values v -> Values (copy_vals v);;
-
     (* other if you want to have one ESP per function*)
     let initAbsenEnv () = {stack = HashStack.create 50; heap = HashHeap.create 50; register = HashRegister.create 50; constant = HashConstant.create 50; ha = []; hf = []};;
 
@@ -324,7 +302,7 @@ struct
         let _,res = HashHeap.find tbl (id,offset,t) in
         res
  
-    let get_he_chunk abs id offset t =
+    let _get_he_chunk abs id offset t =
         let tbl = abs.heap in
         let res,_ = HashHeap.find tbl (id,offset,t) in
         res
@@ -370,7 +348,17 @@ struct
         let abs = initAbsenEnv() in
         let () = init_reg abs "esp" in
         let () = init_reg abs "ebp" in
+        let () = init_reg abs "ecx" in
+        let () = init_reg abs "edx" in
+        let () = init_reg abs "ebx" in
+        let () = init_reg abs "edi" in
+        let () = init_reg abs "esi" in
         let () = init_reg abs "eax" in
+        let () = init_reg abs "CF" in
+        let () = init_reg abs "OF" in
+        let () = init_reg abs "SF" in
+        let () = init_reg abs "DF" in
+        let () = init_reg abs "ZF" in
         let () = init_reg_base abs "dsbase" in
         let () = init_reg_base abs "ssbase" in
         abs
@@ -385,16 +373,6 @@ struct
     let init_vs_chunk n  type_chunk state=
         Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=type_chunk;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }]);;
  
-    let init_malloc n state =
-        let abs = initAbsenEnv() in
-        (*let name = BaseOffset ({base=HE ({base_chunk=n;size=0;type_chunk=0;state_alloc=state;state_free=[]});offset=0}) in*)
-        let chunk = ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) in
-        let vals = Values ([{base_vs=Constant;offsets=Offsets [0]}]) in
-        let () = set_he abs n 0 NORMAL chunk vals in
-        let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[]}) ; offsets=Offsets [0] }])) in
-        abs
-
-
     let append_offsets o1 o2 =
         match (o1,o2) with
         | TOP_Offsets,_ | _,TOP_Offsets -> raise Absenvgenerique.TOP_OFFSETS
@@ -460,7 +438,7 @@ struct
     (* If TOP, keep no TOP *) 
     let merge_values_two v1 v2=
         match (v1,v2) with
-        | TOP,v | v,TOP -> v
+        | TOP,_ | _,TOP -> TOP
         | Values v1, Values v2 -> merge_values (Values (v1@v2));;   
 
     (* should may be use first class module here ? *)
@@ -1009,29 +987,38 @@ struct
                 | HE e -> e::acc
                 | Init _ | Constant -> acc
             ) [] v
-    
+   
+    let check_uaf abs vals = 
+        let names = values_to_names vals in
+        let hf = abs.hf in
+        List.fold_left (fun acc x ->
+                match x with
+                | Reg _ -> acc 
+                | BaseOffset b -> 
+                        match b.base with
+                        | HE h->
+                            begin 
+                            try
+                                let f = List.find (fun x -> same_chunk x h) hf in
+                                ({h with state_free=f.state_free})::acc
+                            with 
+                                Not_found -> acc
+                            end
+                        | Init _ | Constant -> acc
+        ) [] names
+
+ 
     (*
      * Checking for double-free
      *)
     let check_df abs vals =
-        let hf = abs.hf in
-        match vals with
-        | TOP -> raise Absenvgenerique.ERROR
-        | Values v ->
-        begin
-        let chunk_in chunk chunks=
-            List.exists 
-                (fun x  -> (same_base (HE chunk) (HE x))
-                ) chunks 
-        in
-        let free_elems_cleans = clean_he_for_free v in
-        List.filter (fun x -> chunk_in x free_elems_cleans ) hf
-        end
+        check_uaf abs vals
 
     (*
      * free elem
      * *)
     let free abs vals state show_free =
+        let () = set_register abs "eax" (Values ([{base_vs=Constant ;offsets=Offsets [0]}])) in
         let (ha,hf) = abs.ha,abs.hf in
         match vals with
         | TOP -> raise Absenvgenerique.ERROR
@@ -1125,23 +1112,6 @@ struct
             | Reg _ :: tl -> filter tl l
         in
         filter names []
-        
-    let check_uaf names hf =
-        List.fold_left (fun acc x ->
-                match x with
-                | Reg _ -> acc 
-                | BaseOffset b -> 
-                        match b.base with
-                        | HE h->
-                            begin 
-                            try
-                                let f = List.find (fun x -> same_chunk x h) hf in
-                                ({h with state_free=f.state_free})::acc
-                            with 
-                                Not_found -> acc
-                            end
-                        | Init _ | Constant -> acc
-        ) [] names
         
     let check_use_heap names =
         let ret = List.map 

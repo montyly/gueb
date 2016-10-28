@@ -3,41 +3,6 @@ open Function_
 open Node
 open Absenvgenerique
 
-
-
-(*
- * Set of functions to read files
- *
- * *)
-let read_lines_file filename = 
-    let lines = ref [] in
-    let chan = open_in filename in
-    let () =
-    try while true; do
-        let new_line = input_line chan in
-        lines := new_line :: !lines 
-        done;  
-    with End_of_file -> close_in chan in
-    List.rev !lines ;;
-
-let rec filter_none l r =
-    match l with
-    | [] -> r
-    | hd::tl -> match hd with
-                | Some a -> filter_none tl (a::r)
-                | _ -> filter_none tl r;;
-
-let read_file file_name pattern func =
-    let lines=read_lines_file file_name in
-    let lines_no_filter= List.map 
-        (fun x -> 
-            try
-                Some (Scanf.sscanf x pattern func)
-            with    
-            End_of_file -> None    
-       ) lines in
-    filter_none lines_no_filter [] ;;
-
 module REIL = functor (Absenv_v : AbsEnvGenerique ) ->
 struct
  
@@ -63,6 +28,8 @@ type type_of_node_reil=
     | Undef 
     | Unknow;;
 
+(*
+Unused for now
 type size_arg_reil=
  |OPERAND_SIZE_ADDRESS
  |OPERAND_SIZE_BYTE
@@ -71,6 +38,7 @@ type size_arg_reil=
  |OPERAND_SIZE_EMPTY
  |OPERAND_SIZE_QWORD
  |OPERAND_SIZE_OWORD;;
+*)
 
 type register_reil=
  |ESP
@@ -171,7 +139,7 @@ let create_arg size_arg type_arg value_reil=
     | _,_,"t10"->Register (T10)
     | _,_,"t11"->Register (T11)
     | _,_,"t12"->Register (T12)
-    | _,_,"t13"->Register (T12)
+    | _,_,"t13"->Register (T13)
     | _,_,"t14"->Register (T14)
     | _,_,"t15"->Register (T15)
     | _,_,"t16"->Register (T16)
@@ -181,7 +149,7 @@ let create_arg size_arg type_arg value_reil=
     | _,_,"t20"->Register (T20)
     | _,_,"t21"->Register (T21)
     | _,_,"t22"->Register (T22)
-    | _,_,"t23"->Register (T22)
+    | _,_,"t23"->Register (T23)
     | _,_,"t24"->Register (T24)
     | _,_,"t25"->Register (T25)
     | _,_,"t26"->Register (T26)
@@ -215,10 +183,6 @@ let create_arg size_arg type_arg value_reil=
 
 let create_stmt_reil type_node s0 t0 v0 s1 t1 v1 s2 t2 v2={type_node=type_node;arg0=create_arg s0 t0 v0 ;arg1=create_arg s1 t1 v1;arg2=create_arg s2 t2 v2}
 
-let create_connexion a b = (a,b);;
-
-let create_bb a list_n=(a,list_n);;
-    
 let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 = 
     match type_node with
     | "add" -> (create_stmt_reil Add s0 t0 v0 s1 t1 v1 s2 t2 v2,addr,0)
@@ -342,35 +306,6 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
 
     let print_stmt s = (print_type s)^(print_args s);;
         
-    let parse_nodes_file file_name = read_file file_name "%d,%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^\n]" parse_reil;;
-   
-    let parse_bb addr s=
-        let p s=Scanf.sscanf s "%d,%s" (fun x y -> (x,y))  in
-        let rec f chaine = 
-            try
-                let (n,s)=p chaine in (n::(f s)) 
-            with
-                End_of_file -> []
-        in (addr,(f s));;
- 
-    let parse_bbs_file bb_name = read_file  bb_name "%d:%s" parse_bb ;;
-    
-    let parse_connexions_file file_name = read_file file_name "%d,%d" create_connexion;;
-    
-    let parse_call_retn call retn =  (read_file call "%d" (fun x -> x) ,read_file retn "%d" (fun x -> x));;
-
-    let parse_malloc_free malloc free =
-        let m=read_file malloc "%d" (fun x -> x) in
-        let f=read_file  free "%d" (fun x -> x)  in
-        (m,f);;
-
-    let parse_not_load not_load = read_file not_load "%x" (fun x->x);;
-    
-    (* TODO mieux faire *)
-    let parse_eip eip = List.hd (read_file eip "%d" (fun x->x) );;
-
-    let parse_number_unloop eip = List.hd (read_file  eip "%d" (fun x->x) );;
-
     let get_value_jump ir vsa =
         match ir.type_node with
         | Jcc -> 
@@ -520,7 +455,10 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                         | hd::tl -> merge_vals_rec tl (Absenv_v.merge_values_two hd l)
                     in
                     Absenv_v.set_value_string abs arg2 (merge_vals_rec vals_arg0 (List.hd vals_arg0))
-                else abs
+                else 
+                        Absenv_v.set_value_string abs arg2 (Absenv_v.top_value ())
+                        (*Printf.printf "Ignore Ldm\n";
+                        abs*)
             (*
              * xor a1 b1,
              * for each value a1
@@ -576,12 +514,28 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 let val2 =Absenv_v.get_value_string abs arg1 in 
                 let val_bsh = Absenv_v.bsh val1 val2 in 
                 Absenv_v.set_value_string abs arg2 val_bsh
-            | Jcc | Nop | Mul | Div | Undef | Unknow  -> abs;;
+            | Mul -> 
+                let arg0=arg_to_string (ir.arg0) in
+                let arg1=arg_to_string (ir.arg1) in
+                let arg2=arg_to_string (ir.arg2) in
+                let val1 = Absenv_v.get_value_string abs arg0 in 
+                let val2 =Absenv_v.get_value_string abs arg1 in 
+                let val_mul = Absenv_v.mul val1 val2 in 
+                Absenv_v.set_value_string abs arg2 val_mul
+            | Div -> 
+                let arg0=arg_to_string (ir.arg0) in
+                let arg1=arg_to_string (ir.arg1) in
+                let arg2=arg_to_string (ir.arg2) in
+                let val1 = Absenv_v.get_value_string abs arg0 in 
+                let val2 =Absenv_v.get_value_string abs arg1 in 
+                let val_div = Absenv_v.div val1 val2 in 
+                Absenv_v.set_value_string abs arg2 val_div
+            | Jcc | Nop | Undef | Unknow  -> abs;;
 
     (* 
      * Check for uaf on stm or ldm
      * *)
-    let check_uaf (stmt,abs,hf,addr) =
+    let check_uaf (stmt,abs,addr) =
         match stmt.type_node with
         (*
          * stm a1,,a3
@@ -593,8 +547,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 begin
                 let arg2=arg_to_string (stmt.arg2) in
                 let vals=Absenv_v.get_value_string abs arg2 in
-                let names=Absenv_v.values_to_names vals in
-                let chunks=Absenv_v.check_uaf names hf in
+                let chunks=Absenv_v.check_uaf abs vals in
                 match chunks with
                 | [] -> None
                 | _ -> Some (stmt,chunks,addr)
@@ -609,8 +562,7 @@ let parse_reil addr type_node s0 t0 v0 s1 t1 v1 s2 t2 v2 =
                 begin
                 let arg0=arg_to_string (stmt.arg0) in
                 let vals=Absenv_v.get_value_string abs arg0 in
-                let names=Absenv_v.values_to_names vals in
-                let chunks=Absenv_v.check_uaf names hf in
+                let chunks=Absenv_v.check_uaf abs vals in
                 match chunks with
                 | [] -> None
                 | _ -> Some (stmt,chunks,addr)

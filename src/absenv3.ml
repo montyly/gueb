@@ -22,13 +22,11 @@ struct
             size : int;
             type_chunk : chunk_t ; (* 0 : heap, 1 : init mem, hack when no init memory, we class it as chunk *)
             mutable state : state ;
-            mutable state_alloc : ((int*int)*string*int) list; (* addr it func_name number_func *)
-            mutable state_free : (((int*int)*string*int) list) list;
+            mutable state_alloc : Gueb_type.call_stack; (* addr it func_name number_func *)
+            mutable state_free : Gueb_type.call_stack list;
         };;
 
     type he = chunk;;
-
-    type init = chunk;;
 
     type kset = 
         | Offsets of offset list
@@ -36,9 +34,10 @@ struct
 
     type stack_name = REG_ESP | REG_EBP;;
 
-    let get_stack_name s = match s with "ebp" -> REG_EBP | "esp" -> REG_ESP | _ -> failwith (Printf.sprintf "Bad stack register %s" s)
+    let _get_stack_name s = match s with "ebp" -> REG_EBP | "esp" -> REG_ESP | _ -> failwith (Printf.sprintf "Bad stack register %s" s)
 
-    type stack_state = state * ((int*int)*string*int) list 
+    (*type stack_state = state * ((int*int)*string*int) list *)
+    type stack_state = state * Gueb_type.call_stack
 
     type base = 
         | Constant 
@@ -205,22 +204,6 @@ struct
         | TOP -> []
         | Values v -> values_to_names_rec v [];;
              
-    let get_hf abs =
-        let heap = abs.heap in
-        let vals = HashHeap.fold (fun _ (x) acc -> x::acc) heap [] in
-        let init = abs.init in
-        let vals = HashInit.fold (fun _ (x) acc -> x::acc) init vals in
-        let stack = abs.stack in
-        let vals = HashStack.fold (fun _ (x) acc -> x::acc) stack vals in
-        let constant = abs.constant in
-        let vals = HashConstant.fold (fun _ (x) acc -> x::acc) constant vals in
-        let register = abs.register in
-        let vals = HashRegister.fold (fun _ (x) acc -> x::acc) register vals in
-        let vals = List.concat (List.map (fun x -> match x with TOP -> [] | Values v -> v) vals) in
-        List.fold_left (fun acc x -> match x.base_vs with 
-                                     | HE c -> if (c.state =FREE) then c::acc else acc
-                                     | Constant | Init _ | Stack _ -> acc) [] vals  
-        
         
 
     (* 
@@ -238,20 +221,6 @@ struct
         | Stack s1, Stack s2 -> s1=s2
         | Constant , Init _ | Constant , HE _ | Constant , Stack _ | Init _ , Constant | Init _ , HE _ | Init _ , Stack _  | HE _ , Constant | HE _ , Init _ | HE _ , Stack _ | Stack _ , Constant | Stack _ , Init _ | Stack _, HE _  -> false;;
         
-    let same_base_offset b1 b2 =
-        match (b1.base,b2.base) with
-        | Constant ,Constant -> b1.offset==b2.offset
-        | Init r1, Init r2 ->r1=r2 &&  b1.offset==b2.offset
-        | Stack s1, Stack s2 ->s1=s2 &&  b1.offset==b2.offset
-        | HE h1 , HE h2 -> (same_chunk  h1 h2) && b1.offset==b2.offset
-        | Constant , Init _ | Constant , HE _ | Constant , Stack _ | Init _ , Constant | Init _ , HE _ | Init _ , Stack _  | HE _ , Constant | HE _ , Init _ | HE _ , Stack _ | Stack _ , Constant | Stack _ , Init _ | Stack _, HE _  -> false;;
-
-    let same_name n1 n2 =  
-        match (n1,n2) with
-        | Reg r1,Reg r2 -> r1=r2
-        | BaseOffset b1, BaseOffset b2 -> same_base_offset b1 b2
-        | Reg _ , BaseOffset _ | BaseOffset _ , Reg _ -> false;;
-
     (* 
      * Printy print functions
      * *)
@@ -334,7 +303,7 @@ struct
         | TOP -> "TOP"
         | Values v -> " | " ^(String.concat " | " (List.map (fun x -> pp_valueset x) v))
 
-    let pp_absenv name values =
+    let _pp_absenv name values =
         pp_name name ^" : "^(pp_valuesset values) 
 
     let pp_absenvs abs =
@@ -365,11 +334,6 @@ struct
             | [] -> l
             | hd::tl -> copy_vals_rec tl (({base_vs=hd.base_vs;offsets=hd.offsets})::l)
         in copy_vals_rec v [];;
-
-    let copy_valsset v=
-        match v with
-        | TOP -> TOP
-        | Values v -> Values (copy_vals v);;
 
     (* other if you want to have one ESP per function*)
     let initAbsenEnv () = {stack = HashStack.create 50; init = HashInit.create 50 ; heap = HashHeap.create 50; register = HashRegister.create 50; constant = HashConstant.create 50;};;
@@ -431,7 +395,17 @@ struct
         let abs = initAbsenEnv() in
         let () = init_reg abs "esp" in
         let () = init_reg abs "ebp" in
+        let () = init_reg abs "ecx" in
+        let () = init_reg abs "edx" in
+        let () = init_reg abs "ebx" in
+        let () = init_reg abs "edi" in
+        let () = init_reg abs "esi" in
         let () = init_reg abs "eax" in
+        let () = init_reg abs "CF" in
+        let () = init_reg abs "OF" in
+        let () = init_reg abs "SF" in
+        let () = init_reg abs "DF" in
+        let () = init_reg abs "ZF" in
         let () = init_reg_base abs "dsbase" in
         let () = init_reg_base abs "ssbase" in
         abs
@@ -446,16 +420,6 @@ struct
     let init_vs_chunk n  type_chunk state=
         Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=type_chunk;state_alloc=state;state_free=[];state=ALLOC}) ; offsets=Offsets [0] }]);;
  
-    let init_malloc n state =
-        let abs = initAbsenEnv() in
-        (*let name = BaseOffset ({base=HE ({base_chunk=n;size=0;type_chunk=0;state_alloc=state;state_free=[]});offset=0}) in*)
-        let chunk = ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[];state=ALLOC}) in
-        let vals = Values ([{base_vs=Constant;offsets=Offsets [0]}]) in
-        let () = set_he abs n 0 NORMAL chunk vals in
-        let () = init_reg_val abs "eax" (Values ([{base_vs=HE ({base_chunk=n;size=0;type_chunk=NORMAL;state_alloc=state;state_free=[];state=ALLOC}) ; offsets=Offsets [0] }])) in
-        abs
-
-
     let append_offsets o1 o2 =
         match (o1,o2) with
         | TOP_Offsets,_ | _,TOP_Offsets -> raise Absenvgenerique.TOP_OFFSETS
@@ -483,18 +447,26 @@ struct
         let is_in b hf=List.exists (fun x -> x.base_chunk=b.base_chunk && x.type_chunk = b.type_chunk) hf in
         (List.filter (fun x-> not( is_in x hf)) ha);;*)
 
-    let get_state l =
+    let get_state_heap l =
         List.map (fun x -> match x.base_vs with 
                            | HE h -> h.state
                            | Constant | Init _ | Stack _ -> failwith "Call get_state on no heap values ?\n") l
 
+    let get_state_stack l =
+        List.map (fun x -> match x.base_vs with 
+                           | Stack (_,(s,_)) -> s
+                           | Constant | Init _ | HE _ -> failwith "Call get_state on no heap values ?\n") l
+
     let get_base_free_conservative head l =
         match head.base_vs with
         | HE h->        
-                let states = get_state (head::l) in
+                let states = get_state_heap (head::l) in
                 if(List.exists (fun x -> x = FREE) states ) then (HE {h with state = FREE})
-                else HE h
-        | Constant | Init _ | Stack _ -> head.base_vs
+                else head.base_vs
+        | Stack (n,(_,cs)) -> let states = get_state_stack (head::l) in
+                if(List.exists (fun x -> x = FREE) states ) then (Stack (n,(FREE,cs)))
+                else head.base_vs
+        | Constant | Init _ -> head.base_vs
  
     let merge_values values =
         let val_same_base value values = List.filter (fun x -> same_base value.base_vs x.base_vs) values in
@@ -534,7 +506,7 @@ struct
     (* If TOP, keep no TOP *) 
     let merge_values_two v1 v2=
         match (v1,v2) with
-        | TOP,v | v,TOP -> v
+        | TOP,_ | _,TOP -> TOP
         | Values v1, Values v2 -> merge_values (Values (v1@v2));;   
 
     (* should may be use first class module here ? *)
@@ -1129,29 +1101,30 @@ struct
                 | HE e -> e::acc
                 | Init _ | Constant | Stack _ -> acc
             ) [] v
-    
+   
+    let check_uaf _abs vals = 
+        match vals with
+        | TOP -> []
+        | Values vals ->
+                List.fold_left (fun acc x -> match x.base_vs with 
+                                             | HE c -> if (c.state = FREE) then c::acc else acc
+                                             | Stack (_,(FREE,cs)) -> 
+                                                let get_n ((_,_),_,n) = n in
+                                                ({base_chunk = get_n (List.hd cs); size = 0 ; type_chunk = STACK ; state = FREE ; state_alloc = cs; state_free = [ cs] })::acc
+                                             | Constant | Init _ | Stack (_,(ALLOC,_))-> acc
+                ) [] vals
+ 
     (*
      * Checking for double-free
      *)
     let check_df abs vals =
-        let hf = get_hf abs in
-        match vals with
-        | TOP -> raise Absenvgenerique.ERROR
-        | Values v ->
-        begin
-        let chunk_in chunk chunks=
-            List.exists 
-                (fun x  -> (same_base (HE chunk) (HE x))
-                ) chunks 
-        in
-        let free_elems_cleans = clean_he_for_free v in
-        List.filter (fun x -> chunk_in x free_elems_cleans ) hf
-        end
+        check_uaf abs vals
 
     (*
      * free elem
      * *)
     let free abs vals state show_free =
+        let () = set_register abs "eax" (Values ([{base_vs=Constant ;offsets=Offsets [0]}])) in
         let heap = abs.heap in
         let stack = abs.stack in
         let init = abs.init in
@@ -1264,22 +1237,6 @@ struct
         in
         filter names []
         
-    let check_uaf names hf =
-        List.fold_left (fun acc x -> 
-            match x with
-            | Reg _ -> acc
-            | BaseOffset b ->
-                match b.base with
-                | HE h-> 
-                    if (List.exists (fun x -> same_chunk x h) hf) then h::acc
-                    else acc
-                | Stack (_,(FREE,cs)) -> 
-                        let get_n ((_,_),_,n) = n in
-                        ({base_chunk = get_n (List.hd cs); size = 0 ; type_chunk = STACK ; state = FREE ; state_alloc = cs; state_free = [ cs] })::acc
-                | Init _ | Constant | Stack (_,(ALLOC,_)) -> acc
-        ) [] names
-
-
     let check_use_heap names =
         let ret = List.map 
             (fun x -> 

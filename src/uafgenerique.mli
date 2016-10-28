@@ -1,5 +1,6 @@
 type site_type = SITE_NORMAL | SITE_ALLOC | SITE_FREE | SITE_USE | SITE_DF
-type site = (int * int) * string * int
+type site = Gueb_type.call_string
+val pp_site : site -> string
 val equal_site :
   (('a * 'b) * 'c * 'd) * 'e -> (('a * 'b) * 'f * 'g) * 'e -> bool
 val add_type :
@@ -16,7 +17,7 @@ module type UafGenerique =
       val end_analysis : unit -> unit
       val add_uaf :
         ?t:site_type ->
-        Absenv_v.he -> ((int * int) * string * int) list list -> unit
+        Absenv_v.he -> Gueb_type.call_stack list -> unit
       val get_sg_uaf_by_alloc :
         unit ->
         (int * Absenv_v.chunk_t,

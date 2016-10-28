@@ -2,7 +2,7 @@ open Absenvgenerique;;
 
 module type Stubfunc = functor (Absenv_v : AbsEnvGenerique) ->
 sig
-   val stub : int -> Absenv_v.absenv -> (int*int) -> string -> int -> ((int*int)*string*int) list ->  bool * Absenv_v.absenv 
+   val stub : int -> Absenv_v.absenv -> Gueb_type.addr -> Gueb_type.call_name -> Gueb_type.call_id -> Gueb_type.call_stack ->  bool * Absenv_v.absenv 
 
 end ;;
 

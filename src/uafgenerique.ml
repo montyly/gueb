@@ -5,7 +5,9 @@ type site_type =
         | SITE_USE
         | SITE_DF
 
-type site = (int * int) * string * int
+type site = Gueb_type.call_string
+
+let pp_site s = Gueb_type.pp_call_string s
 
 (* do not compare call_n *)
 let equal_site s1 s2 =
@@ -49,7 +51,7 @@ sig
       val end_analysis : unit -> unit
       val add_uaf :
         ?t:site_type ->
-        Absenv_v.he -> ((int * int) * string * int) list list -> unit
+        Absenv_v.he -> Gueb_type.call_stack list -> unit
       val get_sg_uaf_by_alloc :
         unit ->
         (int * Absenv_v.chunk_t,

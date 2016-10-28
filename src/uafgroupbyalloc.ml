@@ -10,8 +10,6 @@ struct
     	(* site : (addr,it) * func_name * call_n *)
 	type site = Uafgenerique.site
 
-        type tree_node = Uafastree.tree_node 
-
         (* Hashtbl that contains result 
         * form :
         *  (id,size)  *   free sites  * malloc site * use sites
@@ -94,7 +92,7 @@ struct
                 let prev = HashTree.find merge_tree tree in
                 HashTree.replace merge_tree tree (filename::prev)
             with
-                Not_found ->  HashTree.add merge_tree tree [filename]
+                Not_found ->  HashTree.add merge_tree tree [filename];
             
 end
 

@@ -472,7 +472,7 @@ struct
     (* If TOP, keep no TOP *) 
     let merge_values_two v1 v2=
         match (v1,v2) with
-        | TOP,_ | _,TOP -> TOP
+        | TOP,v | v,TOP -> v
         | Values v1, Values v2 -> merge_values (Values (v1@v2));;   
 
     (* should may be use first class module here ? *)

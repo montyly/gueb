@@ -10,8 +10,6 @@ struct
     	(* site : (addr,it) * func_name * call_n *)
 	type site = Uafgenerique.site
 
-        type tree_node = Uafastree.tree_node
-
         (* Hashtbl that contains result 
         * form :
         *  (id,size)  *   free sites  * malloc site * use sites

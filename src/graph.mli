@@ -8,6 +8,7 @@ module My_Graph :
       val set_depth : int -> unit
       val set_size  : int -> unit
       val set_max_ins  : int -> unit
+      val set_total_max_ins  : int -> unit
       val launch_supercallgraph_analysis :
         string ->
         Program_piqi.Program_piqi.function_ list ->

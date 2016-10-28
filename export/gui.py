@@ -38,6 +38,8 @@ class ExportBin6ToGUEB:
         frame = self.frame
       
         self.module = find_mod(self.db,self.name)
+        if(not self.module.isInitialized()):
+            self.module.initialize()
         self.data = list_func(self.module)
 
         self.data.sort()

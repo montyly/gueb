@@ -230,6 +230,7 @@ let launch_stub stub p f uaf to_list =
     let m_uaf = match uaf with
         | "alloc" -> (module Uafgroupbyalloc.UafGroupByAlloc : Uafgenerique.UafGenerique)
         | "free" -> (module Uafgroupbyfree.UafGroupByFree : Uafgenerique.UafGenerique)
+        | "use" -> (module Uafgroupbyuse.UafGroupByUse : Uafgenerique.UafGenerique)
         | _ -> failwith "Unknow groupby model ? "
     in let module Uaf = (val m_uaf : Uafgenerique.UafGenerique) in
     let m_stub = match stub with

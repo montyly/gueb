@@ -60,7 +60,7 @@ struct
             !ctr;;
 
     let init program_file =
-        let () = Printf.printf "Lauch VSA on %s\n" program_file in
+        let () = Printf.printf "Launch VSA on %s\n" program_file in
         let () = GraphIR.set_size (!max_func) in
         let () = match !max_ins with
                   | Some d -> GraphIR.set_max_ins d 
@@ -254,7 +254,7 @@ let read_lines_file filename =
     let () =
     try while true; do
         let new_line = input_line chan in
-        lines := new_line :: !lines 
+        lines := (String.trim new_line) :: !lines 
         done;  
     with End_of_file -> close_in chan in
     List.rev !lines ;;

@@ -105,9 +105,9 @@ In ./example there are two file :
 
 You can launch GUEB on all the possible entry points:
 ```
-gueb -reil gnome-nettool -func gnome-nettool-entry-points -output_dir results -type 2
+gueb -reil gnome-nettool -funcs-file gnome-nettool-entry-points -output_dir results -type 2
 ```
--type 2 is used to precise that the analysis will be launch on a set of entry points.
+-type 2 launches the analysis on a set of entry points and is needed with -funcs-file.
 
 GUEB will detect 5 use-afte-free (4 false positives, 1 true positive).
 The real one is located in info_nic_changed :
@@ -165,9 +165,8 @@ Some user reported a trouble to build piqilib. During piqi installation, piqilib
 -------------
 Feist Josselin (josselin.feist [SPAM] gmail.com)
  
-This tool is a part of my thesis (for more information : http://www-verimag.imag.fr/~feist/)
+This tool is a part of my thesis: [Finding the needle in the heap : combining binary analysis techniques to trigger use-after-free](https://tel.archives-ouvertes.fr/tel-01681707v2/document)
 
-Team : http://www-verimag.imag.fr/~potet/code-secu-activities.html
 
 ## <a name="thanks"></a>Thanks
 -------------

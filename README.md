@@ -92,7 +92,7 @@ Two files will be create, the first one is the protobuf file, the second one is 
 
 Then you can launch GUEB:
 ```
-gueb -reil reil_file -func func_name -output_dir results 
+gueb -reil reil_file -func func_name -output-dir results 
 ```
 
 If a use-after-free is found, results of the analysis will be located in  `results/func_name/` (as a dot file)
@@ -105,9 +105,9 @@ In ./example there are two file :
 
 You can launch GUEB on all the possible entry points:
 ```
-gueb -reil gnome-nettool -funcs-file gnome-nettool-entry-points -output_dir results -type 2
+gueb -reil gnome-nettool -funcs-file gnome-nettool-entry-points -output-dir results -type 2
 ```
--type 2 launches the analysis on a set of entry points and is needed with -funcs-file.
+`-type 2` launches the analysis on a set of entry points and is needed with `-funcs-file`. Be sure to create the directory `results` prio GUEB execution.
 
 GUEB will detect 5 use-afte-free (4 false positives, 1 true positive).
 The real one is located in info_nic_changed :
